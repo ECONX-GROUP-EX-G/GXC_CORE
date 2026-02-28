@@ -13,18 +13,31 @@ private:
     std::string address;
     std::string lastTxHash; // For chained TX hashes
     std::unordered_map<std::string, TransactionOutput> unspentOutputs;
-    
+
+    // Quantum-resistant key pair (CRYSTALS-Dilithium)
+    std::string quantumPrivateKey;   // Dilithium secret key (hex)
+    std::string quantumPublicKey;    // Dilithium public key (hex)
+    std::string hybridAddress;       // Hybrid address (hGXC prefix)
+    bool quantumEnabled;             // Whether quantum resistance is active
+
     // Imported addresses (third-party wallets) - watch-only unless private key imported
     std::unordered_map<std::string, std::string> importedAddresses;  // address -> label
     std::unordered_map<std::string, std::string> importedPrivateKeys;  // address -> privateKey
     std::unordered_map<std::string, std::string> importedPublicKeys;   // address -> publicKey
 
 public:
-    // Constructor
+    // Constructor (generates hybrid quantum-resistant keys by default)
     Wallet();
 
-    // Generate a new key pair
+    // Generate a new key pair (classical + quantum hybrid)
     void generateKeyPair();
+
+    // Enable/disable quantum-resistant mode
+    void enableQuantumResistance();
+    bool isQuantumResistant() const { return quantumEnabled; }
+
+    // Upgrade an existing wallet to quantum-resistant
+    void upgradeToQuantumResistant();
 
     // Persistence
     bool saveToFile(const std::string& filepath) const;
@@ -63,8 +76,13 @@ public:
     void updateLastTxHash(const std::string& txHash) { lastTxHash = txHash; }
 
     // Getters
+    // getAddress() always returns the standard GXC/tGXC address.
+    // Quantum protection is applied at the signature level, not the address level,
+    // so every GXC address is quantum-safe when the wallet has quantum keys.
     std::string getAddress() const { return address; }
+    std::string getHybridAddress() const { return hybridAddress; }
     std::string getPublicKey() const { return publicKey; }
+    std::string getQuantumPublicKey() const { return quantumPublicKey; }
     std::string getLastTxHash() const { return lastTxHash; }
     
     // ============= THIRD-PARTY WALLET SUPPORT =============
@@ -113,17 +131,33 @@ public:
     
     // Static address validation methods
     static bool isValidAddress(const std::string& address) {
-        // GXC addresses start with "GXC" (mainnet) or "tGXC" (testnet)
         if (address.length() < 30) return false;
-        return address.substr(0, 3) == "GXC" || address.substr(0, 4) == "tGXC";
+        // Classical: GXC... or tGXC...
+        // Hybrid quantum-resistant: hGXC... or htGXC...
+        // Quantum-only: qGXC... or qtGXC...
+        return address.substr(0, 3) == "GXC" || address.substr(0, 4) == "tGXC" ||
+               address.substr(0, 4) == "hGXC" || address.substr(0, 5) == "htGXC" ||
+               address.substr(0, 4) == "qGXC" || address.substr(0, 5) == "qtGXC";
     }
-    
+
     static bool isTestnetAddress(const std::string& address) {
-        return address.length() >= 4 && address.substr(0, 4) == "tGXC";
+        if (address.length() < 4) return false;
+        return address.substr(0, 4) == "tGXC" ||
+               address.substr(0, 5) == "htGXC" ||
+               address.substr(0, 5) == "qtGXC";
     }
-    
+
     static bool isMainnetAddress(const std::string& address) {
-        return address.length() >= 3 && address.substr(0, 3) == "GXC" && 
-               (address.length() < 4 || address[3] != 'C' || address.substr(0,4) != "tGXC");
+        if (address.length() < 3) return false;
+        if (isTestnetAddress(address)) return false;
+        return address.substr(0, 3) == "GXC" ||
+               address.substr(0, 4) == "hGXC" ||
+               address.substr(0, 4) == "qGXC";
+    }
+
+    static bool isQuantumResistantAddress(const std::string& address) {
+        if (address.length() < 4) return false;
+        return address.substr(0, 4) == "hGXC" || address.substr(0, 5) == "htGXC" ||
+               address.substr(0, 4) == "qGXC" || address.substr(0, 5) == "qtGXC";
     }
 };

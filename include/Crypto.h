@@ -35,9 +35,13 @@ std::string sha256(const std::string& data);
 std::string sha256d(const std::string& data); // Double SHA-256
 std::string ripemd160(const std::string& data);
 std::string keccak256(const std::string& data); // Proper Keccak-256
+std::string sha3_256(const std::string& data); // SHA3-256 (quantum-safe)
 
 // Address generation
 std::string generateAddress(const std::string& publicKeyHex, bool testnet = false);
+
+// Address type detection
+bool isQuantumResistantAddress(const std::string& address);
 
 // Utility functions
 std::vector<uint8_t> hexToBytes(const std::string& hex);

@@ -8,9 +8,10 @@
 struct TransactionInput {
     std::string txHash;      // Reference to previous transaction
     uint32_t outputIndex;    // Index of the output in the referenced transaction
-    std::string signature;   // Signature to verify ownership
+    std::string signature;   // Signature to verify ownership (classical or serialized hybrid)
     double amount;           // Amount from the referenced output (for traceability)
-    std::string publicKey;   // Public key for verification
+    std::string publicKey;   // Public key for verification (classical secp256k1)
+    std::string quantumPublicKey;  // Quantum-resistant public key (Dilithium)
 };
 
 struct TransactionOutput {
@@ -80,6 +81,9 @@ public:
     std::string calculateHash() const;
     bool verifyTransaction() const;
     void signInputs(const std::string& privateKey);
+    void signInputsHybrid(const std::string& classicalPrivateKey,
+                          const std::string& quantumPrivateKey,
+                          const std::string& quantumPublicKey);
 
     // Traceability Verification - Implementing Your Formula
     // Ti.Inputs[0].txHash == Ti.PrevTxHash

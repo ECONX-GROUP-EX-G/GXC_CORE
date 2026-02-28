@@ -324,6 +324,46 @@ std::string keccak256(const std::string& data) {
     return bytesToHex(hash, hashLen);
 }
 
+// SHA3-256 hash (quantum-safe)
+std::string sha3_256(const std::string& data) {
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    if (!ctx) {
+        throw std::runtime_error("Failed to create EVP context for SHA3-256");
+    }
+
+    const EVP_MD* md = EVP_sha3_256();
+    if (!md) {
+        EVP_MD_CTX_free(ctx);
+        throw std::runtime_error("SHA3-256 not available in OpenSSL");
+    }
+
+    if (EVP_DigestInit_ex(ctx, md, nullptr) != 1 ||
+        EVP_DigestUpdate(ctx, data.c_str(), data.length()) != 1) {
+        EVP_MD_CTX_free(ctx);
+        throw std::runtime_error("SHA3-256 digest operation failed");
+    }
+
+    uint8_t hash[32];
+    unsigned int hashLen;
+    if (EVP_DigestFinal_ex(ctx, hash, &hashLen) != 1) {
+        EVP_MD_CTX_free(ctx);
+        throw std::runtime_error("SHA3-256 finalize failed");
+    }
+
+    EVP_MD_CTX_free(ctx);
+    return bytesToHex(hash, hashLen);
+}
+
+// Check if an address is quantum-resistant (hybrid or quantum-only)
+bool isQuantumResistantAddress(const std::string& address) {
+    if (address.length() < 4) return false;
+    // Hybrid addresses: hGXC... or htGXC...
+    // Quantum addresses: qGXC... or qtGXC...
+    return address.substr(0, 4) == "hGXC" ||
+           address.substr(0, 4) == "qGXC" ||
+           (address.length() >= 5 && (address.substr(0, 5) == "htGXC" || address.substr(0, 5) == "qtGXC"));
+}
+
 // Generate address from public key
 std::string generateAddress(const std::string& publicKeyHex, bool testnet) {
     // Convert public key to bytes
