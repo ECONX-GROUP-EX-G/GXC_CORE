@@ -76,8 +76,10 @@ public:
     void updateLastTxHash(const std::string& txHash) { lastTxHash = txHash; }
 
     // Getters
-    std::string getAddress() const { return quantumEnabled ? hybridAddress : address; }
-    std::string getClassicalAddress() const { return address; }
+    // getAddress() always returns the standard GXC/tGXC address.
+    // Quantum protection is applied at the signature level, not the address level,
+    // so every GXC address is quantum-safe when the wallet has quantum keys.
+    std::string getAddress() const { return address; }
     std::string getHybridAddress() const { return hybridAddress; }
     std::string getPublicKey() const { return publicKey; }
     std::string getQuantumPublicKey() const { return quantumPublicKey; }

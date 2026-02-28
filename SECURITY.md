@@ -73,22 +73,26 @@ simultaneously, which protects against:
 
 ### Address Formats
 
+Quantum protection is applied at the **signature level**, not the address
+level. Every `GXC` address is quantum-safe when the wallet has quantum keys —
+there is no need to change your address to be protected.
+
 | Prefix | Type | Quantum Resistant |
 |--------|------|-------------------|
-| `GXC` | Classical mainnet | No (legacy) |
-| `tGXC` | Classical testnet | No (legacy) |
-| `hGXC` | Hybrid mainnet | Yes |
-| `htGXC` | Hybrid testnet | Yes |
-| `qGXC` | Quantum-only mainnet | Yes |
-| `qtGXC` | Quantum-only testnet | Yes |
+| `GXC` | Mainnet | Yes — hybrid signatures protect all GXC addresses |
+| `tGXC` | Testnet | Yes — hybrid signatures protect all tGXC addresses |
+| `hGXC` | Hybrid mainnet (alternate) | Yes — explicit hybrid address format |
+| `htGXC` | Hybrid testnet (alternate) | Yes — explicit hybrid address format |
 
 ### Backward Compatibility
 
-- Existing wallets continue to work with classical signatures
-- Legacy transactions are accepted alongside hybrid transactions
-- Wallets can be upgraded to quantum-resistant mode at any time using
-  `upgradeToQuantumResistant()` — the classical private key is preserved
-- New wallets are created with hybrid keys by default
+- **All `GXC` addresses are quantum-safe** — the same address you already
+  use is protected by hybrid signatures (ECDSA + Dilithium) under the hood
+- Legacy transactions with classical-only signatures are still accepted
+  for backward compatibility during the migration period
+- Existing wallets auto-upgrade: `upgradeToQuantumResistant()` adds quantum
+  keys while preserving the classical private key and address
+- New wallets are created with hybrid keys (classical + quantum) by default
 
 ### Key Sizes
 

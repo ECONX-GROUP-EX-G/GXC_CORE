@@ -619,27 +619,32 @@ bool Wallet::importAddress(const std::string& addr, const std::string& label) {
 }
 
 bool Wallet::controlsAddress(const std::string& addr) const {
-    // Check main wallet address
+    // Check main wallet address (classical GXC format)
     if (addr == address) {
         return true;
     }
-    
+
+    // Check hybrid address (same wallet, different format)
+    if (!hybridAddress.empty() && addr == hybridAddress) {
+        return true;
+    }
+
     // Check imported addresses (with private keys)
     if (importedPrivateKeys.find(addr) != importedPrivateKeys.end()) {
         return true;
     }
-    
+
     // Watch-only addresses are "controlled" in the sense we can track them
     if (importedAddresses.find(addr) != importedAddresses.end()) {
         return true;
     }
-    
+
     return false;
 }
 
 bool Wallet::canSignForAddress(const std::string& addr) const {
-    // Check main wallet address
-    if (addr == address && !privateKey.empty()) {
+    // Check main wallet address (classical or hybrid — same keys)
+    if ((addr == address || addr == hybridAddress) && !privateKey.empty()) {
         return true;
     }
     
