@@ -2,6 +2,7 @@
 #include "../include/HashUtils.h"
 #include "../include/Utils.h"
 #include "../include/Crypto.h"
+#include "../include/HybridCrypto.h"
 #include <sstream>
 #include <algorithm>
 #include <cmath>
@@ -237,39 +238,71 @@ bool Transaction::validateSignatures() const {
     if (isCoinbase) {
         return true; // Coinbase doesn't need signatures
     }
-    
+
     // Verify all input signatures
     for (const auto& input : inputs) {
         if (input.signature.empty()) {
             return false;
         }
-        
+
         if (input.publicKey.empty()) {
             return false;
         }
-        
-        // Verify ECDSA signature
+
         std::string message = input.txHash + std::to_string(input.outputIndex) + std::to_string(input.amount);
-        if (!Crypto::verifySignature(message, input.signature, input.publicKey)) {
-            return false;
+
+        // Detect signature type and verify accordingly
+        HybridCrypto::SignatureType sigType = HybridCrypto::detectSignatureType(input.signature);
+
+        if (sigType == HybridCrypto::SignatureType::HYBRID) {
+            // Hybrid signature: verify BOTH classical and quantum
+            if (input.quantumPublicKey.empty()) {
+                return false; // Hybrid sig requires quantum public key
+            }
+            if (!HybridCrypto::verify(message, input.signature,
+                                       input.publicKey, input.quantumPublicKey)) {
+                return false;
+            }
+        } else {
+            // Classical-only signature (legacy compatibility)
+            if (!Crypto::verifySignature(message, input.signature, input.publicKey)) {
+                return false;
+            }
         }
     }
-    
+
     return true;
 }
 
 void Transaction::signInputs(const std::string& privateKey) {
-    // Proper ECDSA signing with secp256k1
-    // Derive public key from private key
-    std::string publicKey = Crypto::derivePublicKey(privateKey);
-    
+    // Classical ECDSA signing with secp256k1 (legacy mode)
+    std::string pubKey = Crypto::derivePublicKey(privateKey);
+
     for (auto& input : inputs) {
-        // Create message to sign (transaction data)
         std::string message = input.txHash + std::to_string(input.outputIndex) + std::to_string(input.amount);
-        
-        // Sign with ECDSA
+
+        // Sign with ECDSA only
         input.signature = Crypto::signData(message, privateKey);
-        input.publicKey = publicKey;
+        input.publicKey = pubKey;
+    }
+}
+
+void Transaction::signInputsHybrid(const std::string& classicalPrivateKey,
+                                    const std::string& quantumPrivateKeyHex,
+                                    const std::string& quantumPublicKeyHex) {
+    // Hybrid signing: classical ECDSA + quantum-resistant Dilithium
+    std::string classicalPubKey = Crypto::derivePublicKey(classicalPrivateKey);
+
+    for (auto& input : inputs) {
+        std::string message = input.txHash + std::to_string(input.outputIndex) + std::to_string(input.amount);
+
+        // Create hybrid signature (ECDSA + Dilithium)
+        HybridCrypto::HybridSignature hybridSig = HybridCrypto::hybridSign(
+            message, classicalPrivateKey, quantumPrivateKeyHex);
+
+        input.signature = hybridSig.serialize();
+        input.publicKey = classicalPubKey;
+        input.quantumPublicKey = quantumPublicKeyHex;
     }
 }
 
@@ -316,8 +349,9 @@ std::string Transaction::serialize() const {
     // Serialize inputs
     ss << inputs.size() << "|";
     for (const auto& input : inputs) {
-        ss << input.txHash << "|" << input.outputIndex << "|" 
-           << input.signature << "|" << input.amount << "|" << input.publicKey << "|";
+        ss << input.txHash << "|" << input.outputIndex << "|"
+           << input.signature << "|" << input.amount << "|" << input.publicKey << "|"
+           << input.quantumPublicKey << "|";
     }
     
     // Serialize outputs
@@ -393,6 +427,14 @@ bool Transaction::deserialize(const std::string& data) {
             input.signature = parts[index++];
             input.amount = std::stod(parts[index++]);
             input.publicKey = parts[index++];
+            // Quantum public key (may not be present in legacy transactions)
+            if (index < parts.size() && !parts[index].empty() &&
+                parts[index] != "0" && parts[index].length() > 10) {
+                input.quantumPublicKey = parts[index++];
+            } else if (index < parts.size()) {
+                input.quantumPublicKey = "";
+                index++; // Skip the empty/placeholder field
+            }
             inputs.push_back(input);
         }
 

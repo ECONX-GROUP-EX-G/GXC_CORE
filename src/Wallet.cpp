@@ -1,6 +1,8 @@
 #include "../include/Wallet.h"
 #include "../include/HashUtils.h"
 #include "../include/Crypto.h"
+#include "../include/HybridCrypto.h"
+#include "../include/QuantumCrypto.h"
 #include "../include/Config.h"
 
 #include <random>
@@ -9,22 +11,60 @@
 #include <fstream>
 #include <algorithm>
 
-Wallet::Wallet() {
+Wallet::Wallet() : quantumEnabled(false) {
     generateKeyPair();
 }
 
 void Wallet::generateKeyPair() {
-    // Use proper secp256k1 ECDSA key generation
-    Crypto::KeyPair keyPair = Crypto::generateKeyPair();
-    
-    privateKey = keyPair.privateKey;
-    publicKey = keyPair.publicKey;
-    
-    // Generate address from public key based on network configuration
+    // Generate hybrid key pair: classical secp256k1 + quantum-resistant Dilithium
+    HybridCrypto::HybridKeyPair hybridKP = HybridCrypto::generateHybridKeyPair();
+
+    // Classical keys (backward compatible)
+    privateKey = hybridKP.classicalPrivateKey;
+    publicKey = hybridKP.classicalPublicKey;
+
+    // Quantum-resistant keys
+    quantumPrivateKey = hybridKP.quantumPrivateKey;
+    quantumPublicKey = hybridKP.quantumPublicKey;
+
+    // Generate classical address (backward compatible)
     address = Crypto::generateAddress(publicKey, Config::isTestnet());
-    
+
+    // Generate hybrid quantum-resistant address
+    hybridAddress = HybridCrypto::generateHybridAddress(
+        publicKey, quantumPublicKey, Config::isTestnet());
+
+    // Enable quantum resistance by default for new wallets
+    quantumEnabled = true;
+
     // Initialize last transaction hash
     lastTxHash = "";
+}
+
+void Wallet::enableQuantumResistance() {
+    if (quantumPrivateKey.empty()) {
+        upgradeToQuantumResistant();
+    }
+    quantumEnabled = true;
+}
+
+void Wallet::upgradeToQuantumResistant() {
+    if (!quantumPrivateKey.empty()) {
+        quantumEnabled = true;
+        return;
+    }
+
+    // Generate quantum keys while keeping existing classical keys
+    HybridCrypto::HybridKeyPair hybridKP = HybridCrypto::upgradeClassicalKey(privateKey);
+
+    quantumPrivateKey = hybridKP.quantumPrivateKey;
+    quantumPublicKey = hybridKP.quantumPublicKey;
+
+    // Generate hybrid address
+    hybridAddress = HybridCrypto::generateHybridAddress(
+        publicKey, quantumPublicKey, Config::isTestnet());
+
+    quantumEnabled = true;
 }
 
 bool Wallet::saveToFile(const std::string& filepath) const {
@@ -38,6 +78,13 @@ bool Wallet::saveToFile(const std::string& filepath) const {
         file << publicKey << "\n";
         file << address << "\n";
         file << lastTxHash << "\n";
+
+        // Quantum-resistant key data (v2 format)
+        file << "QUANTUM_V2\n";
+        file << (quantumEnabled ? "1" : "0") << "\n";
+        file << quantumPrivateKey << "\n";
+        file << quantumPublicKey << "\n";
+        file << hybridAddress << "\n";
 
         return true;
     } catch (...) {
@@ -58,6 +105,20 @@ bool Wallet::loadFromFile(const std::string& filepath) {
         if (std::getline(file, line)) address = line;
         if (std::getline(file, line)) lastTxHash = line;
 
+        // Check for quantum-resistant key data (v2 format)
+        if (std::getline(file, line) && line == "QUANTUM_V2") {
+            if (std::getline(file, line)) quantumEnabled = (line == "1");
+            if (std::getline(file, line)) quantumPrivateKey = line;
+            if (std::getline(file, line)) quantumPublicKey = line;
+            if (std::getline(file, line)) hybridAddress = line;
+        } else {
+            // Legacy wallet file — auto-upgrade to quantum-resistant
+            quantumEnabled = false;
+            quantumPrivateKey = "";
+            quantumPublicKey = "";
+            hybridAddress = "";
+        }
+
         return !privateKey.empty() && !publicKey.empty() && !address.empty();
     } catch (...) {
         return false;
@@ -65,7 +126,13 @@ bool Wallet::loadFromFile(const std::string& filepath) {
 }
 
 void Wallet::signTransaction(Transaction& tx) {
-    tx.signInputs(privateKey);
+    if (quantumEnabled && !quantumPrivateKey.empty()) {
+        // Sign with hybrid signatures (classical ECDSA + quantum Dilithium)
+        tx.signInputsHybrid(privateKey, quantumPrivateKey, quantumPublicKey);
+    } else {
+        // Legacy classical-only signing
+        tx.signInputs(privateKey);
+    }
 }
 
 Transaction Wallet::createTransaction(const std::string& recipientAddress, double amount, 
@@ -552,27 +619,32 @@ bool Wallet::importAddress(const std::string& addr, const std::string& label) {
 }
 
 bool Wallet::controlsAddress(const std::string& addr) const {
-    // Check main wallet address
+    // Check main wallet address (classical GXC format)
     if (addr == address) {
         return true;
     }
-    
+
+    // Check hybrid address (same wallet, different format)
+    if (!hybridAddress.empty() && addr == hybridAddress) {
+        return true;
+    }
+
     // Check imported addresses (with private keys)
     if (importedPrivateKeys.find(addr) != importedPrivateKeys.end()) {
         return true;
     }
-    
+
     // Watch-only addresses are "controlled" in the sense we can track them
     if (importedAddresses.find(addr) != importedAddresses.end()) {
         return true;
     }
-    
+
     return false;
 }
 
 bool Wallet::canSignForAddress(const std::string& addr) const {
-    // Check main wallet address
-    if (addr == address && !privateKey.empty()) {
+    // Check main wallet address (classical or hybrid — same keys)
+    if ((addr == address || addr == hybridAddress) && !privateKey.empty()) {
         return true;
     }
     

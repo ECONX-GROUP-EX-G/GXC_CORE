@@ -167,6 +167,8 @@ set(CORE_SOURCES
     src/CrossChainBridge.cpp
     src/HashUtils.cpp
     src/Crypto.cpp
+    src/QuantumCrypto.cpp
+    src/HybridCrypto.cpp
     src/Database.cpp
     src/Config.cpp
     src/Logger.cpp
@@ -234,6 +236,9 @@ set(HEADERS
     include/ProofOfPrice.h
     include/CrossChainBridge.h
     include/HashUtils.h
+    include/Crypto.h
+    include/QuantumCrypto.h
+    include/HybridCrypto.h
     include/Network.h
     include/RPCAPI.h
     include/Governance.h
