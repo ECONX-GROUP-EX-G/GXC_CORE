@@ -11,8 +11,9 @@
 #include <unordered_set>
 #include <random>
 
-Blockchain::Blockchain() : lastBlock(), blockReward(50.0), lastHalvingBlock(0),
-    currentHashrate(0.0), lastBlockTime(0.0), recentPoWBlocks(0), recentPoSBlocks(0) {
+Blockchain::Blockchain() : blockReward(50.0), lastHalvingBlock(0),
+    currentHashrate(0.0), lastBlockTime(0.0), recentPoWBlocks(0), recentPoSBlocks(0),
+    lastBlock() {
     
     // Initialize Security Engine
     securityEngine = std::make_unique<GXCSecurity::SecurityEngine>();
@@ -65,9 +66,9 @@ std::vector<Transaction> Blockchain::getTransactionHistory(const std::string& ad
             
             // Check if address is in inputs (sent)
             if (!relevant) {
-                for (const auto& input : tx.getInputs()) {
-                    // Would need to look up the input's source address from UTXO
-                    // For now, check sender address field
+                for (size_t i = 0; i < tx.getInputs().size(); i++) {
+                    // TODO: resolve each input's source address via the UTXO set.
+                    // Until then, fall back to the recorded sender field.
                     if (tx.getSenderAddress() == address) {
                         relevant = true;
                         break;
@@ -411,7 +412,6 @@ bool Blockchain::addBlock(const Block& block) {
     try {
         // Make a mutable copy of the block
         Block blockToAdd = block;
-        bool hasCoinbase = false;
         std::string minerAddress = block.getMinerAddress();
         std::string originalHash = block.getHash(); // Save miner's proof of work
         
@@ -1085,7 +1085,6 @@ void Blockchain::updateUtxoSet(const Block& block) {
             }
             
             // Reduce validator's stake
-            bool found = false;
             
             // CRITICAL FIX: Check validatorMap first (authoritative source)
             auto mapIt = validatorMap.find(stakerAddress);
@@ -1104,7 +1103,6 @@ void Blockchain::updateUtxoSet(const Block& block) {
                 for (auto& v : validators) {
                     if (v.getAddress() == stakerAddress) {
                         v = mapIt->second;
-                        found = true;
                         break;
                     }
                 }
@@ -3117,12 +3115,8 @@ std::vector<std::shared_ptr<Transaction>> Blockchain::getTransactionsByAddress(c
                     }
                 }
                 
-                // Check inputs
-                const auto& inputs = tx.getInputs();
-                for (const auto& input : inputs) {
-                    // Would need to look up the input transaction to get its address
-                    // For now, we'll skip this check
-                }
+                // TODO: resolve each input's source address by looking up the
+                // referenced transaction, so sends are matched as well as receives.
                 
                 if (isRelevant) {
                     transactions.push_back(std::make_shared<Transaction>(tx));

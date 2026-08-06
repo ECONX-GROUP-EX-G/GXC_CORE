@@ -15,7 +15,7 @@ ReversalExecutor::~ReversalExecutor() {
     LOG_INFO("Reversal Executor destroyed");
 }
 
-uint64_t ReversalExecutor::calculateFee(uint64_t amount) {
+uint64_t ReversalExecutor::calculateFee(uint64_t /*amount*/) {
     // Standard fee for all reversals
     // In production, could be dynamic based on amount or network congestion
     return STANDARD_FEE;

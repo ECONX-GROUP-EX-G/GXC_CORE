@@ -14,8 +14,8 @@ static constexpr double AMOUNT_EPSILON = 1e-9;
 
 // Default constructor
 Transaction::Transaction() 
-    : timestamp(std::time(nullptr)), referencedAmount(0.0), nonce(0),
-      isGoldBacked(false), isCoinbase(false), fee(0.0), lockTime(0), type(TransactionType::NORMAL),
+    : type(TransactionType::NORMAL), timestamp(std::time(nullptr)), referencedAmount(0.0),
+      nonce(0), isGoldBacked(false), isCoinbase(false), fee(0.0), lockTime(0),
       workReceiptHash(""), blockHeight(0) {
     txHash = "";
     prevTxHash = "";
@@ -24,8 +24,9 @@ Transaction::Transaction()
 Transaction::Transaction(const std::vector<TransactionInput>& inputsIn, 
                         const std::vector<TransactionOutput>& outputsIn,
                         const std::string& prevTxHashIn)
-    : inputs(inputsIn), outputs(outputsIn), prevTxHash(prevTxHashIn), 
-      isGoldBacked(false), isCoinbase(false), fee(0.0), lockTime(0), type(TransactionType::NORMAL) {
+    : type(TransactionType::NORMAL), inputs(inputsIn), outputs(outputsIn),
+      prevTxHash(prevTxHashIn), isGoldBacked(false), isCoinbase(false), fee(0.0), lockTime(0),
+      workReceiptHash(""), blockHeight(0) {
     timestamp = std::time(nullptr);
     nonce = Utils::randomUint32();
     
@@ -43,8 +44,9 @@ Transaction::Transaction(const std::vector<TransactionInput>& inputsIn,
                         const std::vector<TransactionOutput>& outputsIn,
                         const std::string& prevTxHashIn,
                         const std::string& popReferenceIn)
-    : inputs(inputsIn), outputs(outputsIn), prevTxHash(prevTxHashIn), 
-      popReference(popReferenceIn), isGoldBacked(true), isCoinbase(false), fee(0.0), lockTime(0), type(TransactionType::NORMAL) {
+    : type(TransactionType::NORMAL), inputs(inputsIn), outputs(outputsIn),
+      prevTxHash(prevTxHashIn), popReference(popReferenceIn), isGoldBacked(true),
+      isCoinbase(false), fee(0.0), lockTime(0), workReceiptHash(""), blockHeight(0) {
     timestamp = std::time(nullptr);
     nonce = Utils::randomUint32();
     
@@ -59,9 +61,9 @@ Transaction::Transaction(const std::vector<TransactionInput>& inputsIn,
 
 // Constructor for coinbase transaction
 Transaction::Transaction(const std::string& minerAddress, double blockReward)
-    : prevTxHash("0"), referencedAmount(0.0), receiverAddress(minerAddress),
-      isGoldBacked(false), isCoinbase(true), fee(0.0), lockTime(0), type(TransactionType::NORMAL),
-      workReceiptHash(""), blockHeight(0) {
+    : type(TransactionType::NORMAL), prevTxHash("0"), referencedAmount(0.0),
+      receiverAddress(minerAddress), isGoldBacked(false), isCoinbase(true), fee(0.0),
+      lockTime(0), workReceiptHash(""), blockHeight(0) {
     timestamp = std::time(nullptr);
     nonce = Utils::randomUint32();
     
@@ -555,7 +557,7 @@ void Transaction::clearOutputs() {
 
 // Validation function: verify that the scriptSig in the inputs matches the scriptPubKey of the UTXOs being spent
 // Validates signature against public key and public key against script/address
-bool Transaction::verifyScript(const std::string& signature, const std::string& publicKey, const std::string& scriptPubKey) {
+bool Transaction::verifyScript(const std::string& /*signature*/, const std::string& publicKey, const std::string& scriptPubKey) {
     // This is a simplified P2PKH script verification
     // scriptPubKey format: "OP_DUP OP_HASH160 <address> OP_EQUALVERIFY OP_CHECKSIG"
 

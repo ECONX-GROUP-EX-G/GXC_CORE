@@ -412,7 +412,6 @@ void MessageHandler::sendMessageToPeer(const std::string& peerAddress, const Net
     auto pos = peerAddress.find(':');
     if (pos != std::string::npos) {
         std::string address = peerAddress.substr(0, pos);
-        uint16_t port = static_cast<uint16_t>(std::stoul(peerAddress.substr(pos + 1)));
         
         // In real implementation, would send actual network message
         LOG_NETWORK(LogLevel::DEBUG, "Sending " + messageTypeToString(message.type) + 
@@ -489,101 +488,124 @@ NetworkMessage MessageHandler::deserializeMessage(const std::string& data) {
     return message;
 }
 
+// P2P payload framing.
+//
+// These used to be placeholders: serializeTransaction dropped every input,
+// output and signature; deserializeTransaction returned a transaction with the
+// literal receiver "receiver"; deserializeBlock returned an empty block; and
+// both list decoders returned an empty vector unconditionally. Nothing could
+// propagate across the network. They now delegate to the canonical
+// Transaction and Block codecs, with "<len>:<bytes>" framing for lists so an
+// element containing a delimiter cannot desynchronize the parse.
+
+namespace {
+
+void appendFramed(std::ostringstream& out, const std::string& payload) {
+    out << payload.size() << ':' << payload;
+}
+
+/** Read one framed element, advancing `pos`. Throws on malformed input. */
+std::string readFramed(const std::string& data, size_t& pos) {
+    const size_t colon = data.find(':', pos);
+    if (colon == std::string::npos) {
+        throw std::runtime_error("P2P payload: missing length prefix");
+    }
+
+    const std::string lenStr = data.substr(pos, colon - pos);
+    if (lenStr.empty() || lenStr.size() > 20) {
+        throw std::runtime_error("P2P payload: bad length prefix");
+    }
+    for (char c : lenStr) {
+        if (c < '0' || c > '9') {
+            throw std::runtime_error("P2P payload: non-numeric length prefix");
+        }
+    }
+
+    const unsigned long long len = std::stoull(lenStr);
+    const size_t start = colon + 1;
+    if (len > data.size() - start) {
+        throw std::runtime_error("P2P payload: element length exceeds payload");
+    }
+
+    pos = start + static_cast<size_t>(len);
+    return data.substr(start, static_cast<size_t>(len));
+}
+
+uint64_t readCount(const std::string& data, size_t& pos) {
+    const std::string countStr = readFramed(data, pos);
+    const unsigned long long count = std::stoull(countStr);
+    // A peer cannot send more elements than there are bytes left to hold them.
+    if (count > data.size() - pos) {
+        throw std::runtime_error("P2P payload: implausible element count");
+    }
+    return count;
+}
+
+} // namespace
+
 std::string MessageHandler::serializeTransaction(const Transaction& transaction) {
-    // Simplified serialization - in real implementation would use proper binary format
-    std::ostringstream oss;
-    oss << transaction.getHash() << "|"
-        << transaction.getTimestamp() << "|"
-        << transaction.getTotalOutputAmount() << "|"
-        << transaction.getFee() << "|"
-        << transaction.getPrevTxHash() << "|"
-        << transaction.getReferencedAmount();
-    
-    return oss.str();
+    return transaction.serialize();
 }
 
 Transaction MessageHandler::deserializeTransaction(const std::string& data) {
-    // Simplified deserialization
-    std::istringstream iss(data);
-    std::string token;
-    
-    std::string hash, prevTxHash;
-    std::time_t timestamp;
-    double amount, fee, refAmount;
-    
-    if (std::getline(iss, hash, '|') &&
-        std::getline(iss, token, '|') && (timestamp = std::stoull(token), true) &&
-        std::getline(iss, token, '|') && (amount = std::stod(token), true) &&
-        std::getline(iss, token, '|') && (fee = std::stod(token), true) &&
-        std::getline(iss, prevTxHash, '|') &&
-        std::getline(iss, token, '|') && (refAmount = std::stod(token), true)) {
-        
-        // Create transaction (simplified)
-        Transaction tx;
-        tx.setReceiverAddress("receiver");
-        tx.setTimestamp(timestamp);
-        tx.setPrevTxHash(prevTxHash);
-        tx.setReferencedAmount(refAmount);
-        
-        return tx;
+    Transaction tx;
+    if (!tx.deserialize(data)) {
+        throw std::runtime_error("Invalid transaction data");
     }
-    
-    throw std::runtime_error("Invalid transaction data");
+    return tx;
 }
 
 std::string MessageHandler::serializeBlock(const Block& block) {
-    // Simplified serialization
-    std::ostringstream oss;
-    oss << block.getIndex() << "|"
-        << block.getHash() << "|"
-        << block.getPreviousHash() << "|"
-        << block.getTimestamp() << "|"
-        << block.getNonce() << "|"
-        << block.getTransactions().size();
-    
-    return oss.str();
+    return block.serialize();
 }
 
 Block MessageHandler::deserializeBlock(const std::string& data) {
-    // Simplified deserialization - would need full implementation
-    std::vector<Transaction> emptyTxs;
-    Block block;
-    block.setIndex(0);
-    block.setPreviousHash("0");
-    return block;
+    return Block::deserialize(data);
 }
 
 std::string MessageHandler::serializeBlockList(const std::vector<Block>& blocks) {
     std::ostringstream oss;
-    oss << blocks.size() << "|";
-    
+    appendFramed(oss, std::to_string(blocks.size()));
     for (const auto& block : blocks) {
-        oss << serializeBlock(block) << "|";
+        appendFramed(oss, block.serialize());
     }
-    
     return oss.str();
 }
 
 std::vector<Block> MessageHandler::deserializeBlockList(const std::string& data) {
     std::vector<Block> blocks;
-    // Simplified implementation
+    size_t pos = 0;
+
+    const uint64_t count = readCount(data, pos);
+    blocks.reserve(static_cast<size_t>(count));
+    for (uint64_t i = 0; i < count; i++) {
+        blocks.push_back(Block::deserialize(readFramed(data, pos)));
+    }
     return blocks;
 }
 
 std::string MessageHandler::serializeTransactionList(const std::vector<Transaction>& transactions) {
     std::ostringstream oss;
-    oss << transactions.size() << "|";
-    
+    appendFramed(oss, std::to_string(transactions.size()));
     for (const auto& tx : transactions) {
-        oss << serializeTransaction(tx) << "|";
+        appendFramed(oss, tx.serialize());
     }
-    
     return oss.str();
 }
 
 std::vector<Transaction> MessageHandler::deserializeTransactionList(const std::string& data) {
     std::vector<Transaction> transactions;
-    // Simplified implementation
+    size_t pos = 0;
+
+    const uint64_t count = readCount(data, pos);
+    transactions.reserve(static_cast<size_t>(count));
+    for (uint64_t i = 0; i < count; i++) {
+        Transaction tx;
+        if (!tx.deserialize(readFramed(data, pos))) {
+            throw std::runtime_error("P2P payload: malformed transaction in list");
+        }
+        transactions.push_back(tx);
+    }
     return transactions;
 }
 

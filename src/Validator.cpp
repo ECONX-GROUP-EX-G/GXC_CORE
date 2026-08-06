@@ -76,7 +76,7 @@ std::string Validator::signBlock(const std::string& blockHash, const std::string
     return keccak256(blockHash + privateKey + address);
 }
 
-bool Validator::verifySignature(const std::string& blockHash, const std::string& signature) const {
+bool Validator::verifySignature(const std::string& /*blockHash*/, const std::string& signature) const {
     // In a real implementation, this would verify the cryptographic signature
     // For now, we'll just check if the signature is not empty
     return !signature.empty() && signature.length() > 32;
@@ -138,7 +138,7 @@ double Validator::calculateAPY() const {
     return estimatedAPY;
 }
 
-void Validator::slash(double amount, const std::string& reason) {
+void Validator::slash(double amount, const std::string& /*reason*/) {
     isSlashed = true;
     slashedAmount += amount;
     stakeAmount = std::max(0.0, stakeAmount - amount);
@@ -167,7 +167,7 @@ std::string Validator::serialize() const {
     return address + ":" + std::to_string(stakeAmount) + ":" + std::to_string(stakingDays);
 }
 
-Validator Validator::deserialize(const std::string& data) {
+Validator Validator::deserialize(const std::string& /*data*/) {
     // Simple deserialization (in a real implementation, use proper deserialization)
     Validator v;
     // Parse the data string and set fields

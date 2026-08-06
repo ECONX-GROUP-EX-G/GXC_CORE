@@ -1681,7 +1681,7 @@ void RPCAPI::processRequests() {
 }
 
 // Blockchain information methods
-JsonValue RPCAPI::getBlockchainInfo(const JsonValue& params) {
+JsonValue RPCAPI::getBlockchainInfo(const JsonValue& /*params*/) {
     JsonValue result;
     
     // Get REAL-TIME data from blockchain (no caching)
@@ -1706,17 +1706,17 @@ JsonValue RPCAPI::getBlockchainInfo(const JsonValue& params) {
     return result;
 }
 
-JsonValue RPCAPI::getBestBlockHash(const JsonValue& params) {
+JsonValue RPCAPI::getBestBlockHash(const JsonValue& /*params*/) {
     // REAL-TIME: Returns hash of latest block (always current)
     return blockchain->getLatestBlock().getHash();
 }
 
-JsonValue RPCAPI::getBlockCount(const JsonValue& params) {
+JsonValue RPCAPI::getBlockCount(const JsonValue& /*params*/) {
     // REAL-TIME: Returns current blockchain height (always up-to-date)
     return static_cast<uint64_t>(blockchain->getHeight());
 }
 
-JsonValue RPCAPI::getDifficulty(const JsonValue& params) {
+JsonValue RPCAPI::getDifficulty(const JsonValue& /*params*/) {
     // REAL-TIME: Returns current network difficulty (always up-to-date)
     return blockchain->getDifficulty();
 }
@@ -2539,7 +2539,7 @@ JsonValue RPCAPI::sendToAddress(const JsonValue& params) {
     }
 }
 
-JsonValue RPCAPI::estimateFee(const JsonValue& params) {
+JsonValue RPCAPI::estimateFee(const JsonValue& /*params*/) {
     // Get recommended fee from blockchain
     double recommendedFee = blockchain->calculateRecommendedFee();
     
@@ -2571,11 +2571,11 @@ JsonValue RPCAPI::estimateFee(const JsonValue& params) {
     
     // Current tier
     std::string currentTier = "low";
-    if (pendingCount >= Config::getInt("fee_high_threshold", 100)) {
+    if (pendingCount >= static_cast<size_t>(Config::getInt("fee_high_threshold", 100))) {
         currentTier = "very_high";
-    } else if (pendingCount >= Config::getInt("fee_medium_threshold", 50)) {
+    } else if (pendingCount >= static_cast<size_t>(Config::getInt("fee_medium_threshold", 50))) {
         currentTier = "high";
-    } else if (pendingCount >= Config::getInt("fee_low_threshold", 10)) {
+    } else if (pendingCount >= static_cast<size_t>(Config::getInt("fee_low_threshold", 10))) {
         currentTier = "medium";
     }
     result["current_tier"] = currentTier;
@@ -2606,8 +2606,7 @@ JsonValue RPCAPI::validateAddress(const JsonValue& params) {
     return result;
 }
 
-JsonValue RPCAPI::listAccounts(const JsonValue& params) {
-    int minConfirms = params.size() > 0 ? params[0].get<int>() : 1;
+JsonValue RPCAPI::listAccounts(const JsonValue& /*params*/) {
     
     JsonValue result;
     result[""] = 100.0; // Default account balance
@@ -2617,7 +2616,7 @@ JsonValue RPCAPI::listAccounts(const JsonValue& params) {
 }
 
 // Mining methods
-JsonValue RPCAPI::getMiningInfo(const JsonValue& params) {
+JsonValue RPCAPI::getMiningInfo(const JsonValue& /*params*/) {
     JsonValue result;
     
     result["blocks"] = static_cast<uint64_t>(blockchain->getHeight());
@@ -3355,7 +3354,7 @@ JsonValue RPCAPI::getBlockTemplate(const JsonValue& params) {
 }
 
 // Network methods
-JsonValue RPCAPI::getPeerInfo(const JsonValue& params) {
+JsonValue RPCAPI::getPeerInfo(const JsonValue& /*params*/) {
     JsonValue result(JsonValue::array());
     
     // Return empty array - P2P networking not yet implemented
@@ -3365,12 +3364,12 @@ JsonValue RPCAPI::getPeerInfo(const JsonValue& params) {
     return result;
 }
 
-JsonValue RPCAPI::getConnectionCount(const JsonValue& params) {
+JsonValue RPCAPI::getConnectionCount(const JsonValue& /*params*/) {
     // In a real implementation, would get actual connection count
     return 3;
 }
 
-JsonValue RPCAPI::getNetworkInfo(const JsonValue& params) {
+JsonValue RPCAPI::getNetworkInfo(const JsonValue& /*params*/) {
     JsonValue result;
     
     result["version"] = 20000; // 2.0.0
@@ -3409,7 +3408,7 @@ JsonValue RPCAPI::getNetworkInfo(const JsonValue& params) {
     return result;
 }
 
-JsonValue RPCAPI::getMempoolInfo(const JsonValue& params) {
+JsonValue RPCAPI::getMempoolInfo(const JsonValue& /*params*/) {
     // Get mempool information from blockchain
     if (!blockchain) {
         throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Blockchain not initialized");
@@ -3428,7 +3427,7 @@ JsonValue RPCAPI::getMempoolInfo(const JsonValue& params) {
     return result;
 }
 
-JsonValue RPCAPI::getRawMempool(const JsonValue& params) {
+JsonValue RPCAPI::getRawMempool(const JsonValue& /*params*/) {
     // Get raw mempool (list of transaction hashes)
     if (!blockchain) {
         throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Blockchain not initialized");
@@ -3498,14 +3497,14 @@ JsonValue RPCAPI::help(const JsonValue& params) {
     return JsonValue(); // Default return
 }
 
-JsonValue RPCAPI::stopNode(const JsonValue& params) {
+JsonValue RPCAPI::stopNode(const JsonValue& /*params*/) {
     LOG_API(LogLevel::WARNING, "Node shutdown requested via RPC");
     
     // In a real implementation, would trigger graceful shutdown
     return "GXC node stopping";
 }
 
-JsonValue RPCAPI::getInfo(const JsonValue& params) {
+JsonValue RPCAPI::getInfo(const JsonValue& /*params*/) {
     JsonValue result;
     
     uint32_t currentHeight = blockchain->getHeight();
@@ -4040,7 +4039,7 @@ JsonValue RPCAPI::addStake(const JsonValue& params) {
     return JsonValue(); // Should be unreachable
 }
 
-JsonValue RPCAPI::getValidators(const JsonValue& params) {
+JsonValue RPCAPI::getValidators(const JsonValue& /*params*/) {
     auto validators = blockchain->getActiveValidators();
     
     JsonValue result(JsonValue::array());
@@ -4467,7 +4466,7 @@ JsonValue RPCAPI::importAddress(const JsonValue& params) {
     return result;
 }
 
-JsonValue RPCAPI::listImportedAddresses(const JsonValue& params) {
+JsonValue RPCAPI::listImportedAddresses(const JsonValue& /*params*/) {
     if (!wallet) {
         throw RPCException(RPCException::RPC_INTERNAL_ERROR, "Node wallet not initialized");
     }
@@ -4923,7 +4922,7 @@ JsonValue RPCAPI::listUnspent(const JsonValue& params) {
 }
 
 // Address statistics methods
-JsonValue RPCAPI::getAddressCount(const JsonValue& params) {
+JsonValue RPCAPI::getAddressCount(const JsonValue& /*params*/) {
     try {
         size_t totalAddresses = blockchain->getTotalAddressCount();
         size_t activeAddresses = blockchain->getActiveAddressCount();
@@ -4948,7 +4947,7 @@ JsonValue RPCAPI::getAddressCount(const JsonValue& params) {
     }
 }
 
-JsonValue RPCAPI::getAddressStats(const JsonValue& params) {
+JsonValue RPCAPI::getAddressStats(const JsonValue& /*params*/) {
     try {
         size_t totalAddresses = blockchain->getTotalAddressCount();
         size_t activeAddresses = blockchain->getActiveAddressCount();
@@ -5205,8 +5204,6 @@ JsonValue RPCAPI::getTxOut(const JsonValue& params) {
         
         std::string txHash = params[0].get<std::string>();
         uint32_t outputIndex = params[1].get<uint32_t>();
-        bool includeMempool = params.size() > 2 && params[2].is_boolean() ? 
-            params[2].get<bool>() : true;
         
         // Check UTXO set
         const auto& utxoSet = blockchain->getUtxoSet();
@@ -5246,7 +5243,7 @@ JsonValue RPCAPI::getTxOut(const JsonValue& params) {
     }
 }
 
-JsonValue RPCAPI::getTxOutSetInfo(const JsonValue& params) {
+JsonValue RPCAPI::getTxOutSetInfo(const JsonValue& /*params*/) {
     try {
         const auto& utxoSet = blockchain->getUtxoSet();
         
@@ -5490,7 +5487,7 @@ JsonValue RPCAPI::dumpPrivKey(const JsonValue& params) {
     }
 }
 
-JsonValue RPCAPI::getNetTotals(const JsonValue& params) {
+JsonValue RPCAPI::getNetTotals(const JsonValue& /*params*/) {
     try {
         JsonValue result;
         result["totalbytesrecv"] = 0;  // Would need network tracking

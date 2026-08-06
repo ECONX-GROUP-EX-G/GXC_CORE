@@ -24,7 +24,7 @@ PriceSubmission Oracle::submitPrice(double price, const std::string& privateKey)
 }
 
 ProofOfPrice::ProofOfPrice(uint32_t requiredSubmissionsIn, double maxTimeDelayIn)
-    : requiredSubmissions(requiredSubmissionsIn), maxTimeDelay(maxTimeDelayIn), currentRound(0) {
+    : currentRound(0), requiredSubmissions(requiredSubmissionsIn), maxTimeDelay(maxTimeDelayIn) {
 }
 
 void ProofOfPrice::addOracle(const Oracle& oracle) {
@@ -113,7 +113,7 @@ PriceData ProofOfPrice::aggregatePoP() {
     return data;
 }
 
-std::vector<std::string> ProofOfPrice::detectOutliers(const std::vector<double>& prices, double median) {
+std::vector<std::string> ProofOfPrice::detectOutliers(const std::vector<double>& prices, double /*median*/) {
     std::vector<std::string> outliers;
     
     // Calculate mean and standard deviation

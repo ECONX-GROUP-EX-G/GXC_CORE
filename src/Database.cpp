@@ -699,12 +699,12 @@ bool Database::storeTransaction(const Transaction& tx) {
     return saveTransaction(tx, "", 0);
 }
 
-bool Database::saveTransactionInputs(const Transaction& tx) {
+bool Database::saveTransactionInputs(const Transaction& /*tx*/) {
     // Inputs are stored as part of the transaction
     return true;
 }
 
-bool Database::saveTransactionOutputs(const Transaction& tx) {
+bool Database::saveTransactionOutputs(const Transaction& /*tx*/) {
     // Outputs are stored as part of the transaction
     return true;
 }
@@ -1171,12 +1171,12 @@ bool Database::storePriceData(const std::string& asset, double price, uint32_t t
     return put(makeKey("price:", asset + ":" + std::to_string(timestamp)), data.dump());
 }
 
-bool Database::getLatestPrice(const std::string& asset, double& price, uint32_t& timestamp) const {
+bool Database::getLatestPrice(const std::string& /*asset*/, double& /*price*/, uint32_t& /*timestamp*/) const {
     // Simplified implementation
     return false;
 }
 
-std::vector<std::pair<double, uint32_t>> Database::getPriceHistory(const std::string& asset, uint32_t count) const {
+std::vector<std::pair<double, uint32_t>> Database::getPriceHistory(const std::string& /*asset*/, uint32_t /*count*/) const {
     return {}; // Simplified
 }
 
@@ -1241,7 +1241,7 @@ double Database::getPoolShares(const std::string& poolAddress, const std::string
     }
 }
 
-std::vector<std::pair<std::string, double>> Database::getPoolContributors(const std::string& poolAddress) const {
+std::vector<std::pair<std::string, double>> Database::getPoolContributors(const std::string& /*poolAddress*/) const {
     return {}; // Simplified
 }
 

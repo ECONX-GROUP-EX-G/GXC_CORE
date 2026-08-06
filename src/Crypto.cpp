@@ -8,6 +8,16 @@
 #include <iomanip>
 #include <cstring>
 
+// OpenSSL 3.x deprecates the low-level EC_KEY and RIPEMD160 interfaces in favour
+// of EVP_PKEY, but keeps them working. Migrating the signing path is tracked
+// separately (see docs/ARCHITECTURE.md, "Planned work"); until then the
+// deprecation notices are acknowledged here rather than left to drown out new
+// warnings across the rest of the build.
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 namespace Crypto {
 
 // Utility: Convert hex string to bytes
@@ -319,3 +329,7 @@ std::string generateAddress(const std::string& publicKeyHex, bool testnet) {
 }
 
 } // namespace Crypto
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif

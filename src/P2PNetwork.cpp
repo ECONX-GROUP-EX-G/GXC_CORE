@@ -10,7 +10,7 @@
 #include <fcntl.h>
 
 P2PNetwork::P2PNetwork(Blockchain* bc, int port, int maxConn)
-    : blockchain(bc), listenPort(port), maxConnections(maxConn), running(false), listenSocket(-1) {
+    : blockchain(bc), running(false), listenSocket(-1), listenPort(port), maxConnections(maxConn) {
     
     // Add default seed nodes (can be configured)
     // For now, these are placeholders - replace with actual seed nodes
@@ -128,7 +128,7 @@ void P2PNetwork::listenForConnections() {
         
         {
             std::lock_guard<std::mutex> lock(peersMutex);
-            if (peers.size() >= maxConnections) {
+            if (peers.size() >= static_cast<size_t>(maxConnections)) {
                 LOG_P2P(LogLevel::WARNING, "Max connections reached, rejecting peer");
                 close(clientSocket);
                 continue;
@@ -182,7 +182,7 @@ void P2PNetwork::handlePeer(std::shared_ptr<Peer> peer) {
         else if (message.find("GETBLOCKS:") == 0) {
             int fromHeight = std::stoi(message.substr(10));
             // Send blocks to peer (full block data, not just hash)
-            for (int i = fromHeight; i <= blockchain->getHeight() && i < fromHeight + 500; i++) {
+            for (int i = fromHeight; i <= static_cast<int>(blockchain->getHeight()) && i < fromHeight + 500; i++) {
                 Block block = blockchain->getBlock(static_cast<size_t>(i));
                 // Serialize full block to JSON for P2P transfer
                 std::string blockData = block.serialize();

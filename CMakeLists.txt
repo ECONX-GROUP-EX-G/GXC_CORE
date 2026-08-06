@@ -155,7 +155,6 @@ include_directories(${CMAKE_SOURCE_DIR}/third_party)
 
 # Source files for core blockchain
 set(CORE_SOURCES
-    src/main.cpp
     src/Blockchain.cpp
     src/block.cpp
     src/Transaction.cpp
@@ -176,6 +175,10 @@ set(CORE_SOURCES
     src/Argon2id.cpp
     src/EthashAlgorithm.cpp
     src/arith_uint256.cpp
+    src/AddressRegistry.cpp
+    src/ValidatorRegistry.cpp
+    src/StockMarketAPI.cpp
+    src/StockContractModels.cpp
 )
 
 # Network and API sources

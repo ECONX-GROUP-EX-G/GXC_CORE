@@ -11,6 +11,13 @@
 #include <openssl/ripemd.h>
 
 #include "../include/Crypto.h"
+
+// See the note in Crypto.cpp: OpenSSL 3.x deprecates the low-level SHA256_/
+// RIPEMD160_ context API while keeping it functional.
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 // Simple SHA-256 implementation using OpenSSL
 std::string sha256(const std::string& data) {
     unsigned char hash[SHA256_DIGEST_LENGTH];
@@ -339,3 +346,7 @@ std::string gxhash(const std::string& data, uint64_t nonce) {
     
     return ss.str();
 }
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif

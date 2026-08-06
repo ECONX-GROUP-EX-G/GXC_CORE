@@ -426,7 +426,7 @@ void MiningManager::submitShare(const BlockTemplate& blockTemplate, uint64_t non
     }
 }
 
-void MiningManager::submitToPool(const BlockTemplate& blockTemplate, uint64_t nonce, MiningAlgorithm algorithm) {
+void MiningManager::submitToPool(const BlockTemplate& /*blockTemplate*/, uint64_t /*nonce*/, MiningAlgorithm /*algorithm*/) {
     // Simplified pool submission
     LOG_MINING(LogLevel::INFO, "Submitting share to pool: " + poolUrl);
     

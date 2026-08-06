@@ -12,7 +12,7 @@
 class ValidatorRegistry {
 private:
     std::map<std::string, std::shared_ptr<Validator>> validators;
-    std::mutex registryMutex;
+    mutable std::mutex registryMutex;
     
     // Configuration
     double minStakeRequired;

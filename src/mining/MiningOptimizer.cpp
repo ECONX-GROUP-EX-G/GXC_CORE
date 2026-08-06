@@ -10,7 +10,7 @@
 void MiningOptimizer::optimizeSystem(Blockchain* blockchain) {
     std::cout << "[MiningOptimizer] Optimizing system for mining... Blockchain height: " << (blockchain ? blockchain->getHeight() : 0) << std::endl;
 }
-void MiningOptimizer::setCPUAffinity(const std::vector<uint32_t>& cores) {
+void MiningOptimizer::setCPUAffinity(const std::vector<uint32_t>& /*cores*/) {
     std::cout << "[MiningOptimizer] Setting CPU affinity..." << std::endl;
 }
 void MiningOptimizer::setPriority(int priority) {

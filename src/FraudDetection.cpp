@@ -324,7 +324,7 @@ bool FraudDetection::checkReAggregation(const Transaction& tx) {
 }
 
 // Rule 4: Dormancy then Activation
-bool FraudDetection::checkDormancyActivation(const Transaction& tx, const TaintInfo& taint) {
+bool FraudDetection::checkDormancyActivation(const Transaction& /*tx*/, const TaintInfo& taint) {
     // Check if funds were dormant
     uint64_t currentTime = std::time(nullptr);
     uint64_t dormancyPeriod = currentTime - taint.timestamp;
