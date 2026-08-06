@@ -8,7 +8,7 @@
 [![CodeQL](https://github.com/ECONX-GROUP-EX-G/GXC_CORE/actions/workflows/codeql.yml/badge.svg)](https://github.com/ECONX-GROUP-EX-G/GXC_CORE/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://en.cppreference.com/w/cpp/17)
-[![Tests](https://img.shields.io/badge/tests-172-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-173-brightgreen.svg)](tests/)
 
 [Whitepaper](docs/WHITEPAPER.md) · [Architecture](docs/ARCHITECTURE.md) · [API reference](docs/API_REFERENCE.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
@@ -139,7 +139,7 @@ Generate an address first with `./build/gxc-keygen`.
 
 ## Tests
 
-172 cases across 13 suites, no external test framework required.
+173 cases across 13 suites, no external test framework required.
 
 ```bash
 ./build/gxc-tests                 # everything

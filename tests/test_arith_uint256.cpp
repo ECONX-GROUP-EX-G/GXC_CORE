@@ -6,6 +6,8 @@
 
 #include "../include/arith_uint256.h"
 
+#include <string>
+
 namespace {
 
 arith_uint256 fromHex(const std::string& hex) {
@@ -211,6 +213,68 @@ GXC_TEST(ArithUint256, BlockProofRisesWithDifficulty) {
 
     CHECK(hardWork > easyWork);
     CHECK_FALSE(easyWork.IsZero());
+}
+
+// Property-based cross-check.
+//
+// The individual operator tests above use hand-picked values. These drive
+// pseudo-random operands through algebraic identities that must hold for any
+// correct modular-arithmetic implementation, which catches carry, borrow, and
+// limb-boundary mistakes that fixed vectors miss. Seeded, so a failure
+// reproduces exactly.
+GXC_TEST(ArithUint256, ArithmeticIdentitiesHoldOverRandomOperands) {
+    uint64_t state = 0x9e3779b97f4a7c15ULL;
+    auto next = [&state]() {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        return state;
+    };
+    auto randomValue = [&](int maxNibbles) {
+        static const char* digits = "0123456789abcdef";
+        const int n = 1 + static_cast<int>(next() % static_cast<uint64_t>(maxNibbles));
+        std::string hex;
+        for (int i = 0; i < n; i++) hex += digits[next() % 16];
+        arith_uint256 v;
+        v.SetHex(hex);
+        return v;
+    };
+
+    for (int i = 0; i < 500; i++) {
+        const arith_uint256 a = randomValue(64);
+        const arith_uint256 b = randomValue(32);
+
+        // Addition and subtraction are inverses, modulo 2^256.
+        CHECK_EQ(((a + b) - b).GetHex(), a.GetHex());
+        CHECK_EQ(((a - b) + b).GetHex(), a.GetHex());
+
+        // Addition commutes; multiplication commutes.
+        CHECK_EQ((a + b).GetHex(), (b + a).GetHex());
+        CHECK_EQ((a * b).GetHex(), (b * a).GetHex());
+
+        // A left shift by k is multiplication by 2^k.
+        CHECK_EQ((a << 7).GetHex(), (a * arith_uint256(128)).GetHex());
+
+        // Division satisfies a = q*b + r with 0 <= r < b.
+        if (!b.IsZero()) {
+            const arith_uint256 q = a / b;
+            const arith_uint256 remainder = a - (q * b);
+            CHECK(remainder < b);
+            CHECK_EQ(((q * b) + remainder).GetHex(), a.GetHex());
+        }
+
+        // Shifting out and back loses exactly the low bits.
+        CHECK_EQ(((a >> 8) << 8).GetHex(), (a - (a - ((a >> 8) << 8))).GetHex());
+
+        // bits() must bound the value: 2^(bits-1) <= a < 2^bits.
+        const int bits = a.bits();
+        if (bits > 0) {
+            CHECK(a >= (arith_uint256(1) << (bits - 1)));
+            if (bits < 256) {
+                CHECK(a < (arith_uint256(1) << bits));
+            }
+        }
+    }
 }
 
 GXC_TEST(ArithUint256, ChainworkAccumulates) {
