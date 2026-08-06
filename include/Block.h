@@ -50,13 +50,39 @@ public:
     Block(); // Default constructor
     Block(uint32_t indexIn, const std::string& previousHashIn, BlockType type);
     
-    // Mining and validation
-    void mineBlock(double difficultyIn);
-    
+    /**
+     * Search for a nonce whose header hash meets the target for `difficultyIn`.
+     *
+     * On success the block's hash, work receipt, and the coinbase transaction's
+     * work receipt are all set, and true is returned. If `maxAttempts` nonces
+     * are exhausted first the block is left un-mined and false is returned --
+     * callers should then change something in the header (timestamp, extranonce)
+     * before retrying rather than looping forever.
+     */
+    bool mineBlock(double difficultyIn, uint64_t maxAttempts = ~uint64_t(0));
+
     // Compute Work Receipt Hash (Proof-of-Work Receipt)
     std::string computeWorkReceipt() const;
-    bool validateBlock(const std::string& validatorSignature = "") const;
-    
+
+    /**
+     * Verify the Proof-of-Work Receipt.
+     *
+     * Checks that the stored receipt is the one this header actually implies and
+     * that the coinbase transaction carries the same receipt and the right
+     * height -- which is what makes a mining reward traceable to the specific
+     * proof-of-work that earned it. PoS blocks carry no receipt.
+     */
+    bool verifyWorkReceipt() const;
+
+    /** Verify a PoS block's validator signature over its header. */
+    bool validateBlock(const std::string& signature = "") const;
+
+    /** Recompute the header hash and confirm the stored hash matches it. */
+    bool hasValidHash() const;
+
+    /** Recompute the merkle root and confirm the stored root matches it. */
+    bool hasValidMerkleRoot() const;
+
     // Transaction management
     bool addTransaction(const Transaction& transaction);
     void addTransactionUnchecked(const Transaction& transaction); // Add without verification (for block submission)

@@ -549,9 +549,10 @@ bool Blockchain::addBlock(const Block& block) {
         // CRITICAL: Calculate and accumulate chainwork
         // This is essential for fork choice and reorg safety
         // Works for all algorithms: SHA256, Ethash, GXHash, PoS
-        arith_uint256 blockWork = GetBlockProof(blockPtr->getDifficulty());
+        const bool isTestnetChain = Config::isTestnet();
+        arith_uint256 blockWork = GetBlockProof(blockPtr->getDifficulty(), isTestnetChain);
         arith_uint256 totalChainWork;
-        
+
         if (!chain.empty() && lastBlock) {
             // Accumulate: new_chainwork = prev_chainwork + block_work
             arith_uint256 prevChainWork(lastBlock->getChainWork());
@@ -560,9 +561,11 @@ bool Blockchain::addBlock(const Block& block) {
             // Genesis block: chainwork = block_work
             totalChainWork = blockWork;
         }
-        
+
         blockPtr->setChainWork(totalChainWork.GetHex());
-        blockPtr->setNBits(0x1d00ffff); // Standard difficulty bits
+        // Record the target this block was actually mined against rather than a
+        // fixed constant, so nBits stays consistent with the block's difficulty.
+        blockPtr->setNBits(DifficultyToTarget(blockPtr->getDifficulty(), isTestnetChain).GetCompact());
         
         LOG_BLOCKCHAIN(LogLevel::DEBUG, "addBlock: Block work: " + blockWork.GetHex().substr(0, 16) + 
                       "..., Total chainwork: " + totalChainWork.GetHex().substr(0, 16) + "...");
@@ -885,7 +888,7 @@ bool Blockchain::loadBlocksFromDatabase() {
             std::shared_ptr<Block> blockPtr = std::make_shared<Block>(block);
             
             // Recalculate chainwork for this block
-            arith_uint256 blockWork = GetBlockProof(blockPtr->getDifficulty());
+            arith_uint256 blockWork = GetBlockProof(blockPtr->getDifficulty(), Config::isTestnet());
             cumulativeWork += blockWork;
             blockPtr->setChainWork(cumulativeWork.GetHex());
             
@@ -1295,18 +1298,27 @@ bool Blockchain::validateProofOfWork(const Block& block) const {
     }
     
     // Validate hash format (64 hex characters)
-    if (submittedHash.length() != 64) {
-        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfWork: Invalid hash length: " + std::to_string(submittedHash.length()));
+    if (!isValidHash256(submittedHash)) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfWork: Malformed block hash");
         return false;
     }
-    
-    for (char c : submittedHash) {
-        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
-            LOG_BLOCKCHAIN(LogLevel::ERROR, "validateProofOfWork: Hash contains non-hex characters");
-            return false;
-        }
+
+    // CONSENSUS RULE: the submitted hash must be the hash this block's contents
+    // actually produce. Without this the proof-of-work is free: a miner could
+    // claim any hash with enough leading zeros and never do the work.
+    if (block.getMerkleRoot() != block.calculateMerkleRoot()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "❌ CONSENSUS FAILURE: Merkle root does not match block transactions");
+        return false;
     }
-    
+
+    const std::string recomputedHash = block.calculateHash();
+    if (recomputedHash != submittedHash) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, std::string("❌ CONSENSUS FAILURE: Block hash does not match block contents. ") +
+                      "Claimed: " + submittedHash.substr(0, 16) + "..., " +
+                      "Actual: " + recomputedHash.substr(0, 16) + "...");
+        return false;
+    }
+
     // CONSENSUS RULE: Minimum difficulty enforcement based on network
     bool isTestnet = Config::isTestnet();
     double MIN_DIFFICULTY = isTestnet ? 1.0 : 1000.0;  // Testnet: 1.0, Mainnet: 1000.0
@@ -1329,73 +1341,70 @@ bool Blockchain::validateProofOfWork(const Block& block) const {
         return false;
     }
     
-    // Count leading zeros in submitted hash
-    size_t leadingZeros = 0;
-    for (char c : submittedHash) {
-        if (c == '0') {
-            leadingZeros++;
-        } else {
-            break;
-        }
-    }
-    
-    // Calculate required leading zeros from difficulty
-    size_t requiredZeros = static_cast<size_t>(networkDifficulty);
-    
-    // HARD REJECT: Insufficient proof of work
-    if (leadingZeros < requiredZeros) {
+    // HARD REJECT: Insufficient proof of work.
+    //
+    // This routes through the same meetsTarget() predicate the miner uses, so
+    // validation and mining cannot disagree about what a valid block is. The
+    // previous implementation compared leading hex zeros against the raw
+    // difficulty value, which at the mainnet floor of 1000 demanded 1000 leading
+    // zeros in a 64-character hash -- a condition no block could ever satisfy.
+    if (!meetsTarget(submittedHash, networkDifficulty, isTestnet)) {
         LOG_BLOCKCHAIN(LogLevel::ERROR, std::string("❌ CONSENSUS FAILURE: Insufficient proof of work. ") +
                       "Hash: " + submittedHash.substr(0, 16) + "..., " +
-                      "Leading zeros: " + std::to_string(leadingZeros) + ", " +
-                      "Required: " + std::to_string(requiredZeros) + " " +
+                      "Target: " + DifficultyToTarget(networkDifficulty, isTestnet).GetHex().substr(0, 16) + "... " +
                       "(Difficulty: " + std::to_string(networkDifficulty) + ")");
         return false;
     }
-    
+
     LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Proof of work valid. Hash: " + submittedHash.substr(0, 16) + "..., " +
-                  "Leading zeros: " + std::to_string(leadingZeros) + "/" + std::to_string(requiredZeros));
-    
+                  "Difficulty: " + std::to_string(networkDifficulty));
+
     return true;
 }
 
 bool Blockchain::validateWorkReceipt(const Block& block) const {
-    // Validate Work Receipt (Block-Bound Traceability)
-    // This ensures mining rewards are traceable to actual proof-of-work
-    
-    // 1. Recompute work receipt from block header
-    std::string computedReceipt = block.computeWorkReceipt();
-    
-    // 2. Get work receipt from block
-    std::string blockReceipt = block.getWorkReceiptHash();
-    
-    // 3. Verify they match
+    // Validate Work Receipt (Block-Bound Traceability).
+    //
+    // A work receipt is H(prev_hash || merkle_root || nonce || miner_pubkey ||
+    // difficulty || timestamp). Because it commits to the winning nonce and to
+    // the merkle root, it identifies one specific proof-of-work solution and
+    // cannot be moved to another block. Requiring the coinbase to carry the same
+    // receipt and the block's own height is what makes every newly minted coin
+    // traceable back to the work that minted it.
+    const std::string blockReceipt = block.getWorkReceiptHash();
+    const std::string computedReceipt = block.computeWorkReceipt();
+
+    if (blockReceipt.empty()) {
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Work receipt missing from PoW block");
+        return false;
+    }
+
     if (computedReceipt != blockReceipt) {
-        LOG_BLOCKCHAIN(LogLevel::ERROR, "Work receipt mismatch! Computed: " + computedReceipt.substr(0, 16) + 
+        LOG_BLOCKCHAIN(LogLevel::ERROR, "Work receipt mismatch! Computed: " + computedReceipt.substr(0, 16) +
                       "..., Block has: " + blockReceipt.substr(0, 16) + "...");
         return false;
     }
-    
-    // 4. Verify coinbase transaction has matching work receipt
-    const auto& transactions = block.getTransactions();
-    if (!transactions.empty()) {
-        const Transaction& coinbase = transactions[0];
-        if (coinbase.isCoinbaseTransaction()) {
-            std::string coinbaseReceipt = coinbase.getWorkReceiptHash();
-            if (coinbaseReceipt != blockReceipt) {
-                LOG_BLOCKCHAIN(LogLevel::ERROR, "Coinbase work receipt mismatch! Block: " + blockReceipt.substr(0, 16) + 
-                              "..., Coinbase: " + coinbaseReceipt.substr(0, 16) + "...");
-                return false;
-            }
-            
-            // 5. Verify block height matches
-            if (coinbase.getBlockHeight() != block.getIndex()) {
-                LOG_BLOCKCHAIN(LogLevel::ERROR, "Coinbase block height mismatch! Block: " + std::to_string(block.getIndex()) + 
-                              ", Coinbase: " + std::to_string(coinbase.getBlockHeight()));
-                return false;
-            }
+
+    // Check every coinbase in the block, not only transactions[0] -- a block
+    // that smuggles a second coinbase further down must not slip through.
+    for (const auto& tx : block.getTransactions()) {
+        if (!tx.isCoinbaseTransaction()) {
+            continue;
+        }
+
+        if (tx.getWorkReceiptHash() != blockReceipt) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Coinbase work receipt mismatch! Block: " + blockReceipt.substr(0, 16) +
+                          "..., Coinbase: " + tx.getWorkReceiptHash().substr(0, 16) + "...");
+            return false;
+        }
+
+        if (tx.getBlockHeight() != block.getIndex()) {
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Coinbase block height mismatch! Block: " + std::to_string(block.getIndex()) +
+                          ", Coinbase: " + std::to_string(tx.getBlockHeight()));
+            return false;
         }
     }
-    
+
     LOG_BLOCKCHAIN(LogLevel::INFO, "✅ Work receipt valid: " + blockReceipt.substr(0, 16) + "...");
     return true;
 }

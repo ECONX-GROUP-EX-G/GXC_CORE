@@ -36,39 +36,51 @@ static inline uint64_t rotl64(uint64_t x, int n) {
 }
 
 // Keccak-f[1600] permutation
+//
+// Rho and Pi form a single 24-step cycle through the lanes: each step moves the
+// lane it is holding into position KECCAK_PI_LANE[i] (rotated) and picks up
+// whatever was there to carry into the next step. Reading the source lane
+// directly from state[i] instead of carrying it through the cycle -- as an
+// earlier version did -- computes a different, non-invertible permutation, and
+// the resulting digests match neither Keccak-256 nor SHA3-256.
 static void keccak_f1600(uint64_t state[25]) {
-    uint64_t C[5], D[5], B[25];
-    
     for (int round = 0; round < 24; round++) {
-        // Theta step
+        uint64_t C[5], D[5];
+
+        // Theta
         for (int x = 0; x < 5; x++) {
             C[x] = state[x] ^ state[x + 5] ^ state[x + 10] ^ state[x + 15] ^ state[x + 20];
         }
-        
         for (int x = 0; x < 5; x++) {
             D[x] = C[(x + 4) % 5] ^ rotl64(C[(x + 1) % 5], 1);
         }
-        
         for (int x = 0; x < 5; x++) {
-            for (int y = 0; y < 5; y++) {
-                state[x + 5 * y] ^= D[x];
+            for (int y = 0; y < 25; y += 5) {
+                state[x + y] ^= D[x];
             }
         }
-        
-        // Rho and Pi steps
-        B[0] = state[0];
-        for (int x = 0; x < 24; x++) {
-            B[KECCAK_PI_LANE[x]] = rotl64(state[(x + 1) % 25], KECCAK_ROTATION_OFFSETS[x]);
+
+        // Rho and Pi
+        uint64_t lane = state[1];
+        for (int i = 0; i < 24; i++) {
+            const int target = KECCAK_PI_LANE[i];
+            const uint64_t displaced = state[target];
+            state[target] = rotl64(lane, KECCAK_ROTATION_OFFSETS[i]);
+            lane = displaced;
         }
-        
-        // Chi step
-        for (int y = 0; y < 5; y++) {
+
+        // Chi
+        for (int y = 0; y < 25; y += 5) {
+            uint64_t row[5];
             for (int x = 0; x < 5; x++) {
-                state[x + 5 * y] = B[x + 5 * y] ^ ((~B[(x + 1) % 5 + 5 * y]) & B[(x + 2) % 5 + 5 * y]);
+                row[x] = state[y + x];
+            }
+            for (int x = 0; x < 5; x++) {
+                state[y + x] = row[x] ^ ((~row[(x + 1) % 5]) & row[(x + 2) % 5]);
             }
         }
-        
-        // Iota step
+
+        // Iota
         state[0] ^= KECCAK_ROUND_CONSTANTS[round];
     }
 }

@@ -411,37 +411,45 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/gxc
 )
 
-# Test executables (only build if tests are enabled)
+# Test suite (cmake -DBUILD_TESTS=ON)
 if(BUILD_TESTS)
-    # Test executable for all algorithms
-    add_executable(test_all_algorithms
-        tests/test_all_algorithms.cpp
+    enable_testing()
+
+    add_executable(gxc-tests
+        tests/test_main.cpp
+        tests/test_arith_uint256.cpp
+        tests/test_crypto.cpp
+        tests/test_transaction.cpp
+        tests/test_traceability.cpp
+        tests/test_block.cpp
     )
 
-    target_link_libraries(test_all_algorithms
-        gxc_core
-        OpenSSL::SSL
-        OpenSSL::Crypto
-        ${LEVELDB_LIBRARY}
-        sqlite3
-        pthread
-    )
+    target_link_libraries(gxc-tests gxc_core)
 
-    # Test executable for block validation
-    add_executable(test_block_validation
-        tests/test_block_validation.cpp
-    )
+    # Register each suite separately so a failure names the area that broke and
+    # `ctest -R Traceability` runs just that group.
+    foreach(suite
+            ArithUint256
+            Hash
+            Merkle
+            Crypto
+            Transaction
+            Traceability
+            WorkReceipt
+            Block
+            BlockSerialization
+            ProofOfWork)
+        add_test(NAME ${suite} COMMAND gxc-tests ${suite})
+    endforeach()
 
-    target_link_libraries(test_block_validation
-        gxc_core
-        OpenSSL::SSL
-        OpenSSL::Crypto
-        ${LEVELDB_LIBRARY}
-        sqlite3
-        pthread
-    )
-    
-    message(STATUS "Building test executables")
+    message(STATUS "Building test suite: gxc-tests")
+endif()
+
+# Benchmarks (cmake -DBUILD_BENCHMARKS=ON)
+if(BUILD_BENCHMARKS)
+    add_executable(gxc-benchmarks benchmarks/benchmark_main.cpp)
+    target_link_libraries(gxc-benchmarks gxc_mining gxc_core)
+    message(STATUS "Building benchmarks: gxc-benchmarks")
 endif()
 
 # Display build configuration

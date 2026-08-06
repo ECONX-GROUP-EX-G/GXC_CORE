@@ -5,7 +5,12 @@
 #include <sstream>
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
+
+// Amounts are carried as doubles, so equality has to be a tolerance. One satoshi
+// of GXC is 1e-8; this sits an order of magnitude below that.
+static constexpr double AMOUNT_EPSILON = 1e-9;
 
 // Default constructor
 Transaction::Transaction() 
@@ -105,38 +110,51 @@ std::string Transaction::calculateHash() const {
     return keccak256(ss.str());
 }
 
-// Core Traceability Verification - Implementing Your Formula
+void Transaction::normalizeTraceability() {
+    if (isCoinbase || inputs.empty()) {
+        return;
+    }
+
+    if (prevTxHash.empty() || prevTxHash == "0") {
+        prevTxHash = inputs[0].txHash;
+    }
+    if (referencedAmount == 0.0) {
+        referencedAmount = inputs[0].amount;
+    }
+
+    txHash = calculateHash();
+}
+
+// Core Traceability Verification - the POT formula.
+//
+// This check is deliberately strict. An earlier version substituted
+// inputs[0].txHash for an unset prevTxHash and then compared the two, so the
+// comparison was between a value and itself and could never fail -- the chain
+// link went unverified for exactly the transactions that had not established
+// one. Wallets that do not populate the POT fields should call
+// normalizeTraceability() at construction time instead.
 bool Transaction::verifyTraceabilityFormula() const {
     if (isCoinbase || isGenesis()) {
         return true; // Genesis and coinbase transactions don't need traceability
     }
-    
+
     if (inputs.empty()) {
         return false;
     }
-    
-    // For third-party wallets: if prevTxHash is not set, automatically use inputs[0].txHash
-    std::string effectivePrevTxHash = prevTxHash;
-    if (effectivePrevTxHash.empty() || effectivePrevTxHash == "0") {
-        effectivePrevTxHash = inputs[0].txHash;
-    }
-    
-    // Implement the formula: Ti.Inputs[0].txHash == Ti.PrevTxHash
-    if (inputs[0].txHash != effectivePrevTxHash) {
+
+    // Ti.Inputs[0].txHash == Ti.PrevTxHash
+    if (prevTxHash.empty() || prevTxHash == "0") {
         return false;
     }
-    
-    // For third-party wallets: if referencedAmount is not set, use inputs[0].amount
-    double effectiveReferencedAmount = referencedAmount;
-    if (effectiveReferencedAmount == 0.0 && !inputs.empty()) {
-        effectiveReferencedAmount = inputs[0].amount;
-    }
-    
-    // Implement the formula: Ti.Inputs[0].amount == Ti.ReferencedAmount
-    if (std::abs(inputs[0].amount - effectiveReferencedAmount) > 0.00000001) { // Handle floating point precision
+    if (inputs[0].txHash != prevTxHash) {
         return false;
     }
-    
+
+    // Ti.Inputs[0].amount == Ti.ReferencedAmount
+    if (std::abs(inputs[0].amount - referencedAmount) > AMOUNT_EPSILON) {
+        return false;
+    }
+
     return true;
 }
 
@@ -222,7 +240,7 @@ bool Transaction::validateAmountConsistency() const {
     double outputTotal = getTotalOutputAmount();
     
     // Input total should equal output total plus fee
-    return std::abs(inputTotal - (outputTotal + fee)) < 0.00000001;
+    return std::abs(inputTotal - (outputTotal + fee)) < AMOUNT_EPSILON;
 }
 
 bool Transaction::validateInputOutputBalance() const {
@@ -233,44 +251,80 @@ bool Transaction::validateInputOutputBalance() const {
     return validateAmountConsistency();
 }
 
+std::string Transaction::computeSignatureHash() const {
+    // The signing serialization. Signatures cannot commit to their own value, so
+    // the signature fields are omitted -- but everything that determines where
+    // the money goes is included.
+    std::stringstream ss;
+    ss << std::setprecision(17);
+
+    // Which coins are being spent.
+    ss << inputs.size() << '|';
+    for (const auto& input : inputs) {
+        ss << input.txHash << '|' << input.outputIndex << '|' << input.amount << '|' << input.publicKey << '|';
+    }
+
+    // Where they are going. Omitting this was the flaw: an attacker who observed
+    // a signed transaction could swap in their own outputs and the signature
+    // would still verify.
+    ss << outputs.size() << '|';
+    for (const auto& output : outputs) {
+        ss << output.address << '|' << output.amount << '|' << output.script << '|';
+    }
+
+    // Metadata, including the Proof-of-Traceability fields, so the chain link
+    // cannot be rewritten after signing either.
+    ss << prevTxHash << '|' << referencedAmount << '|' << senderAddress << '|'
+       << receiverAddress << '|' << nonce << '|' << fee << '|' << memo << '|'
+       << lockTime << '|' << static_cast<int>(type) << '|' << timestamp << '|'
+       << (isGoldBacked ? popReference : std::string("")) << '|';
+
+    return sha256d(ss.str());
+}
+
 bool Transaction::validateSignatures() const {
     if (isCoinbase) {
         return true; // Coinbase doesn't need signatures
     }
-    
+
+    if (inputs.empty()) {
+        return false;
+    }
+
+    const std::string sigHash = computeSignatureHash();
+
     // Verify all input signatures
     for (const auto& input : inputs) {
-        if (input.signature.empty()) {
+        if (input.signature.empty() || input.publicKey.empty()) {
             return false;
         }
-        
-        if (input.publicKey.empty()) {
-            return false;
-        }
-        
-        // Verify ECDSA signature
-        std::string message = input.txHash + std::to_string(input.outputIndex) + std::to_string(input.amount);
-        if (!Crypto::verifySignature(message, input.signature, input.publicKey)) {
+
+        if (!Crypto::verifySignature(sigHash, input.signature, input.publicKey)) {
             return false;
         }
     }
-    
+
     return true;
 }
 
 void Transaction::signInputs(const std::string& privateKey) {
-    // Proper ECDSA signing with secp256k1
-    // Derive public key from private key
-    std::string publicKey = Crypto::derivePublicKey(privateKey);
-    
+    // Proper ECDSA signing with secp256k1.
+    const std::string publicKey = Crypto::derivePublicKey(privateKey);
+
+    // The public key is part of the signing serialization, so it has to be in
+    // place on every input before the hash is computed.
     for (auto& input : inputs) {
-        // Create message to sign (transaction data)
-        std::string message = input.txHash + std::to_string(input.outputIndex) + std::to_string(input.amount);
-        
-        // Sign with ECDSA
-        input.signature = Crypto::signData(message, privateKey);
         input.publicKey = publicKey;
+        input.signature.clear();
     }
+
+    const std::string sigHash = computeSignatureHash();
+    for (auto& input : inputs) {
+        input.signature = Crypto::signData(sigHash, privateKey);
+    }
+
+    // Signatures feed into calculateHash(), so the transaction id changes.
+    txHash = calculateHash();
 }
 
 // Utility functions
@@ -330,7 +384,12 @@ std::string Transaction::serialize() const {
     if (isGoldBacked) {
         ss << popReference << "|";
     }
-    
+
+    // The Proof-of-Work Receipt and the height it was earned at. Without these
+    // on the wire a relayed block loses the binding between its coinbase and the
+    // work that minted it, and the receiving peer rejects an otherwise valid block.
+    ss << workReceiptHash << "|" << blockHeight << "|";
+
     return ss.str();
 }
 
@@ -421,6 +480,15 @@ bool Transaction::deserialize(const std::string& data) {
             popReference = parts[index++];
         }
 
+        // Work receipt fields, appended after the outputs. Older payloads omit
+        // them, so their absence is not an error.
+        if (index < parts.size()) {
+            workReceiptHash = parts[index++];
+        }
+        if (index < parts.size() && Utils::isNumeric(parts[index])) {
+            blockHeight = static_cast<uint32_t>(std::stoul(parts[index++]));
+        }
+
         // Recalculate hash to verify integrity
         // Note: Hash calculation logic might need to align if it uses internal members that were populated
         std::string calculatedHash = calculateHash();
@@ -443,21 +511,24 @@ std::vector<std::string> Transaction::getInputHashes() const {
 }
 
 bool Transaction::isGenesis() const {
-    return prevTxHash == "0" && !isCoinbase;
+    // A genesis transaction has no ancestor because it has nothing to spend.
+    //
+    // Requiring `inputs.empty()` is what stops the exemption from becoming a
+    // bypass: isGenesis() short-circuits every traceability check, so without
+    // it any transaction could opt out of Proof of Traceability simply by
+    // setting prevTxHash to "0" while still spending real inputs.
+    return inputs.empty() && prevTxHash == "0" && !isCoinbase;
 }
 
 bool Transaction::hasValidPrevReference() const {
     if (isCoinbase || isGenesis()) {
         return true;
     }
-    
-    // For third-party wallets: if prevTxHash is not set but we have inputs,
-    // automatically derive it from the first input's txHash
-    if ((prevTxHash.empty() || prevTxHash == "0") && !inputs.empty()) {
-        // This is valid - the blockchain will use inputs[0].txHash as the reference
-        return true;
-    }
-    
+
+    // A non-coinbase transaction must name the transaction it descends from.
+    // Wallets that leave the field blank should call normalizeTraceability()
+    // before signing; accepting a blank reference here would break the chain
+    // that Proof of Traceability exists to establish.
     return !prevTxHash.empty() && prevTxHash != "0";
 }
 

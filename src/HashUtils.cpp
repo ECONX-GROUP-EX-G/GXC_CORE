@@ -1,6 +1,8 @@
 #include "../include/HashUtils.h"
 #include "../include/Argon2id.h"
 #include "../include/Blake2b.h"
+#include "../include/arith_uint256.h"
+#include "../include/Config.h"
 #include <sstream>
 #include <iomanip>
 #include <cstring>
@@ -25,9 +27,25 @@ std::string sha256(const std::string& data) {
     return ss.str();
 }
 
-// Double SHA-256 (used in Bitcoin)
+// Double SHA-256 (used in Bitcoin).
+//
+// The second round has to run over the 32 raw digest bytes, not over the
+// 64-character hex rendering of them. The previous implementation returned
+// sha256(sha256_hex(data)), which disagreed with Crypto::sha256d in the same
+// codebase -- so the merkle root computed here and a digest computed there were
+// different functions wearing the same name.
 std::string sha256d(const std::string& data) {
-    return sha256(sha256(data));
+    unsigned char first[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char*>(data.data()), data.size(), first);
+
+    unsigned char second[SHA256_DIGEST_LENGTH];
+    SHA256(first, SHA256_DIGEST_LENGTH, second);
+
+    std::stringstream ss;
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(second[i]);
+    }
+    return ss.str();
 }
 
 // Simplified Ethash function (for demonstration)
@@ -131,13 +149,25 @@ std::string ethash(const std::string& data, uint64_t nonce) {
     // Full Ethash algorithm with DAG
     // For performance, we use a smaller cache size
     const uint32_t cache_size = ETHASH_CACHE_BYTES_INIT / 16; // Reduced for performance
-    
+
     // Generate seed from data
     std::string seed = keccak256(data);
-    
-    // Generate cache
-    auto cache = generate_cache(cache_size, seed);
-    
+
+    // Generate cache.
+    //
+    // The cache depends only on the seed, which is derived from the block header
+    // *without* the nonce -- so it is constant across an entire mining run over
+    // one header. Building it costs ~65k keccak invocations, so regenerating it
+    // per nonce made mining roughly four orders of magnitude slower than the
+    // hash itself. Memoize it against the seed instead.
+    static thread_local std::string cached_seed;
+    static thread_local std::vector<uint32_t> cached_cache;
+    if (cached_cache.empty() || cached_seed != seed) {
+        cached_cache = generate_cache(cache_size, seed);
+        cached_seed = seed;
+    }
+    const std::vector<uint32_t>& cache = cached_cache;
+
     // Create header hash
     std::stringstream ss;
     ss << data << nonce;
@@ -224,49 +254,41 @@ std::string calculateMerkleRoot(const std::vector<std::string>& txHashes) {
     return calculateMerkleRoot(newHashes);
 }
 
-// Verify if a hash meets the target difficulty
-bool meetsTarget(const std::string& hash, double difficulty) {
-    // Bitcoin-style difficulty check
-    // Convert hash string to bytes for proper comparison
-    std::vector<uint8_t> hashBytes;
-    for (size_t i = 0; i < hash.length() && i < 64; i += 2) {
-        if (i + 1 < hash.length()) {
-            std::string byteString = hash.substr(i, 2);
-            try {
-                uint8_t byte = static_cast<uint8_t>(std::stoi(byteString, nullptr, 16));
-                hashBytes.push_back(byte);
-            } catch (...) {
-                return false;
-            }
-        }
-    }
-    
-    if (hashBytes.empty()) {
+bool isValidHash256(const std::string& hash) {
+    if (hash.length() != 64) {
         return false;
     }
-    
-    // Calculate target from difficulty
-    // For Bitcoin-style: higher difficulty = more leading zeros required
-    // We check leading zero bytes
-    size_t requiredZeroBytes = static_cast<size_t>(difficulty / 256.0);
-    
-    // Check leading zero bytes
-    for (size_t i = 0; i < requiredZeroBytes && i < hashBytes.size(); i++) {
-        if (hashBytes[i] != 0) {
+    for (char c : hash) {
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
             return false;
         }
     }
-    
-    // For fractional difficulty, check the next byte
-    if (requiredZeroBytes < hashBytes.size()) {
-        double fractionalPart = difficulty - (requiredZeroBytes * 256.0);
-        uint8_t maxValue = static_cast<uint8_t>(256.0 - fractionalPart);
-        if (hashBytes[requiredZeroBytes] > maxValue) {
-            return false;
-        }
-    }
-    
     return true;
+}
+
+// Verify if a hash meets the target difficulty.
+//
+// This is the authoritative proof-of-work predicate. The miner (Block::mineBlock)
+// and the validator (Blockchain::validateProofOfWork) both route through here so
+// that the two can never disagree about what a valid block looks like.
+bool meetsTarget(const std::string& hash, double difficulty, bool testnet) {
+    if (!isValidHash256(hash)) {
+        return false;
+    }
+
+    const arith_uint256 target = DifficultyToTarget(difficulty, testnet);
+    if (target.IsZero()) {
+        return false;
+    }
+
+    arith_uint256 hashValue;
+    hashValue.SetHex(hash);
+
+    return hashValue <= target;
+}
+
+bool meetsTarget(const std::string& hash, double difficulty) {
+    return meetsTarget(hash, difficulty, Config::isTestnet());
 }
 
 // Convert a hash string to a numeric value for comparison
