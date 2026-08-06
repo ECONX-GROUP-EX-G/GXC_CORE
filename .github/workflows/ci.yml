@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux / GCC / Release
+            os: ubuntu-latest
+            cc: gcc
+            cxx: g++
+            build_type: Release
+          - name: Linux / Clang / Debug
+            os: ubuntu-latest
+            cc: clang
+            cxx: clang++
+            build_type: Debug
+          - name: macOS / AppleClang / Release
+            os: macos-latest
+            cc: clang
+            cxx: clang++
+            build_type: Release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config \
+            libssl-dev libleveldb-dev libsnappy-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake openssl@3 leveldb snappy
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DBUILD_TESTS=ON \
+            -DBUILD_STATIC=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        working-directory: build
+        run: ctest --output-on-failure --timeout 600
+
+  sanitizers:
+    name: Sanitizers (ASan + UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config \
+            libssl-dev libleveldb-dev libsnappy-dev
+
+      # The consensus code does 256-bit arithmetic, bit shifts and buffer
+      # indexing by hand. UBSan catches the shift-overflow and out-of-range
+      # cast classes of bug that a target comparison can hide, and ASan catches
+      # the out-of-bounds reads a malformed P2P frame could otherwise cause.
+      - name: Configure with sanitizers
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTS=ON \
+            -DBUILD_STATIC=OFF \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined"
+
+      - name: Build
+        run: cmake --build build --parallel --target gxc-tests
+
+      - name: Test under sanitizers
+        working-directory: build
+        env:
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ./gxc-tests
+
+  warnings:
+    name: Warning-free build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake pkg-config \
+            libssl-dev libleveldb-dev libsnappy-dev
+
+      # The tree builds clean under -Wall -Wextra -Wpedantic. Promoting warnings
+      # to errors here keeps it that way rather than letting them accumulate.
+      - name: Configure with -Werror
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTS=ON \
+            -DBUILD_STATIC=OFF \
+            -DCMAKE_CXX_FLAGS="-Werror"
+
+      - name: Build
+        run: cmake --build build --parallel

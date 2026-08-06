@@ -425,6 +425,9 @@ if(BUILD_TESTS)
         tests/test_transaction.cpp
         tests/test_traceability.cpp
         tests/test_block.cpp
+        tests/test_mining.cpp
+        tests/test_staking.cpp
+        tests/test_sending.cpp
     )
 
     target_link_libraries(gxc-tests gxc_core)
@@ -441,7 +444,10 @@ if(BUILD_TESTS)
             WorkReceipt
             Block
             BlockSerialization
-            ProofOfWork)
+            ProofOfWork
+            Mining
+            Staking
+            Sending)
         add_test(NAME ${suite} COMMAND gxc-tests ${suite})
     endforeach()
 
@@ -449,10 +455,20 @@ if(BUILD_TESTS)
 endif()
 
 # Benchmarks (cmake -DBUILD_BENCHMARKS=ON)
+# Requires Google Benchmark, which is not vendored: install libbenchmark-dev
+# (Debian/Ubuntu) or google-benchmark (Homebrew).
 if(BUILD_BENCHMARKS)
-    add_executable(gxc-benchmarks benchmarks/benchmark_main.cpp)
-    target_link_libraries(gxc-benchmarks gxc_mining gxc_core)
-    message(STATUS "Building benchmarks: gxc-benchmarks")
+    find_package(benchmark QUIET)
+    if(benchmark_FOUND)
+        add_executable(gxc-benchmarks benchmarks/benchmark_main.cpp)
+        target_link_libraries(gxc-benchmarks gxc_mining gxc_core benchmark::benchmark)
+        message(STATUS "Building benchmarks: gxc-benchmarks")
+    else()
+        message(WARNING
+            "BUILD_BENCHMARKS=ON but Google Benchmark was not found. "
+            "Install libbenchmark-dev (or google-benchmark) to build gxc-benchmarks; "
+            "skipping the target.")
+    endif()
 endif()
 
 # Display build configuration
