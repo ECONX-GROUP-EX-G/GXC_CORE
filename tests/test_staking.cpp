@@ -12,6 +12,7 @@
 #include "../include/SalectValidator.h"
 #include "../include/Validator.h"
 
+#include <algorithm>
 #include <cmath>
 #include <map>
 

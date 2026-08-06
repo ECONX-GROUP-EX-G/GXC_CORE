@@ -59,12 +59,12 @@ std::string sha256d(const std::string& data) {
 // Full Ethash implementation with DAG
 // Based on Ethereum's Ethash algorithm
 namespace {
-    const uint32_t ETHASH_DATASET_BYTES_INIT = 1073741824U; // 2^30 (1GB)
-    const uint32_t ETHASH_DATASET_BYTES_GROWTH = 8388608U;  // 2^23
+    [[maybe_unused]] const uint32_t ETHASH_DATASET_BYTES_INIT = 1073741824U; // 2^30 (1GB)
+    [[maybe_unused]] const uint32_t ETHASH_DATASET_BYTES_GROWTH = 8388608U;  // 2^23
     const uint32_t ETHASH_CACHE_BYTES_INIT = 16777216U;     // 2^24
-    const uint32_t ETHASH_CACHE_BYTES_GROWTH = 131072U;     // 2^17
-    const uint32_t ETHASH_MIX_BYTES = 128;
-    const uint32_t ETHASH_HASH_BYTES = 64;
+    [[maybe_unused]] const uint32_t ETHASH_CACHE_BYTES_GROWTH = 131072U;     // 2^17
+    [[maybe_unused]] const uint32_t ETHASH_MIX_BYTES = 128;
+    [[maybe_unused]] const uint32_t ETHASH_HASH_BYTES = 64;
     const uint32_t ETHASH_DATASET_PARENTS = 256;
     const uint32_t ETHASH_CACHE_ROUNDS = 3;
     const uint32_t ETHASH_ACCESSES = 64;

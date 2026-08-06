@@ -23,7 +23,11 @@ if(WIN32)
 endif()
 
 if(APPLE)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.14")
+    # 10.15 is the floor for std::filesystem, which the RPC and wallet layers
+    # use. Building against 10.14 fails with "introduced in macOS 10.15".
+    if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15")
+    endif()
 endif()
 
 # Compiler-specific settings
@@ -70,6 +74,34 @@ if(ENABLE_LTO)
     endif()
 endif()
 
+# Homebrew installs outside CMake's default search prefixes -- /opt/homebrew on
+# Apple Silicon, /usr/local on Intel -- and keeps openssl keg-only so it is not
+# symlinked into either. Without this, configuring on a stock macOS box either
+# fails to find LevelDB or silently picks up the system LibreSSL.
+if(APPLE)
+    find_program(BREW_PROGRAM brew)
+    if(BREW_PROGRAM)
+        execute_process(
+            COMMAND ${BREW_PROGRAM} --prefix
+            OUTPUT_VARIABLE HOMEBREW_PREFIX
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        if(HOMEBREW_PREFIX)
+            list(APPEND CMAKE_PREFIX_PATH "${HOMEBREW_PREFIX}")
+            message(STATUS "Using Homebrew prefix: ${HOMEBREW_PREFIX}")
+
+            # openssl@3 is keg-only, so point OPENSSL_ROOT_DIR at it directly
+            # unless the caller has already chosen an OpenSSL.
+            if(NOT DEFINED OPENSSL_ROOT_DIR AND
+               EXISTS "${HOMEBREW_PREFIX}/opt/openssl@3")
+                set(OPENSSL_ROOT_DIR "${HOMEBREW_PREFIX}/opt/openssl@3")
+                message(STATUS "Using Homebrew OpenSSL: ${OPENSSL_ROOT_DIR}")
+            endif()
+        endif()
+    endif()
+endif()
+
 # Find OpenSSL
 find_package(OpenSSL REQUIRED)
 if(OPENSSL_FOUND)
@@ -105,28 +137,31 @@ if(NOT TARGET nlohmann_json::nlohmann_json)
     endif()
 endif()
 
-# LevelDB for blockchain storage
+# LevelDB for blockchain storage.
+#
+# CMAKE_PREFIX_PATH (extended above on macOS) and CMake's own defaults cover the
+# usual locations; the explicit hints below add MacPorts and the Homebrew
+# prefixes for hosts where `brew` is not on PATH during configure.
+set(GXC_LIB_HINTS
+    /opt/homebrew         # Homebrew, Apple Silicon
+    /usr/local            # Homebrew, Intel macOS
+    /opt/local            # MacPorts
+    /usr
+)
+
 find_path(LEVELDB_INCLUDE_DIR leveldb/db.h
-    PATHS
-        /usr/include
-        /usr/local/include
-        /opt/local/include
+    HINTS ${GXC_LIB_HINTS}
+    PATH_SUFFIXES include
 )
 
 find_library(LEVELDB_LIBRARY leveldb
-    PATHS
-        /usr/lib
-        /usr/local/lib
-        /opt/local/lib
-        /usr/lib/x86_64-linux-gnu
+    HINTS ${GXC_LIB_HINTS}
+    PATH_SUFFIXES lib lib64 lib/x86_64-linux-gnu lib/aarch64-linux-gnu
 )
 
 find_library(SNAPPY_LIBRARY snappy
-    PATHS
-        /usr/lib
-        /usr/local/lib
-        /opt/local/lib
-        /usr/lib/x86_64-linux-gnu
+    HINTS ${GXC_LIB_HINTS}
+    PATH_SUFFIXES lib lib64 lib/x86_64-linux-gnu lib/aarch64-linux-gnu
 )
 
 if(LEVELDB_INCLUDE_DIR AND LEVELDB_LIBRARY)

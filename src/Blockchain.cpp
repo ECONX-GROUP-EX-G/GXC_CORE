@@ -771,7 +771,9 @@ double Blockchain::calculateBlockReward(uint32_t height) const {
     // 3. Transaction fee component with system pool split
     // Transaction fees are split: 80-90% to miners, 10-20% to system pool
     double transactionFees = 0.0;
-    double systemPoolShare = 0.0;
+    // Accumulated to document the split; the deposit happens during block
+    // processing, so this function only returns the miner's share.
+    [[maybe_unused]] double systemPoolShare = 0.0;
     double feePoolSplitPercentage = Config::getDouble("fee_pool_split_percentage", 0.15); // Default 15%
     
     for (const auto& tx : pendingTransactions) {
