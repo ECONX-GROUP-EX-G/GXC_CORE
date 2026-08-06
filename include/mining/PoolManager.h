@@ -48,10 +48,10 @@ private:
     mutable std::mutex poolsMutex;
     mutable std::mutex socketMutex;
     
-    int socketFd;
+    [[maybe_unused]] int socketFd;
     bool connected;
     std::string currentPoolUrl;
-    bool shouldStop;
+    [[maybe_unused]] bool shouldStop;
     
     double poolHashRate;
     uint32_t poolDifficulty;

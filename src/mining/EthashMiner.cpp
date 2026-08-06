@@ -12,8 +12,8 @@
 constexpr uint64_t ETHASH_EPOCH_LENGTH = 30000;
 constexpr uint64_t ETHASH_DAG_GROWTH = 8192;
 constexpr uint64_t ETHASH_CACHE_ROUNDS = 3;
-constexpr uint64_t ETHASH_MIX_BYTES = 128;
-constexpr uint64_t ETHASH_HASH_BYTES = 64;
+[[maybe_unused]] constexpr uint64_t ETHASH_MIX_BYTES = 128;
+[[maybe_unused]] constexpr uint64_t ETHASH_HASH_BYTES = 64;
 
 EthashMiner::EthashMiner() 
     : isRunning(false), hashRate(0.0), totalHashes(0), threadsCount(0),

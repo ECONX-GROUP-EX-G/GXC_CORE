@@ -108,7 +108,7 @@ void StratumServer::removeMiner(const std::string& minerId) {
     }
 }
 
-bool StratumServer::authorizeMiner(const std::string& minerId, const std::string& username, const std::string& password) {
+bool StratumServer::authorizeMiner(const std::string& minerId, const std::string& username, const std::string& /*password*/) {
     std::lock_guard<std::mutex> lock(minersMutex);
     
     auto it = miners.find(minerId);
@@ -471,7 +471,7 @@ void StratumServer::submitBlockSolution(const StratumShare& share) {
     }
 }
 
-Block StratumServer::createBlockFromShare(const StratumJob& job, const StratumShare& share) {
+Block StratumServer::createBlockFromShare(const StratumJob& job, const StratumShare& /*share*/) {
     // Create block with job transactions
     std::vector<Transaction> blockTxs = job.transactions;
     blockTxs.insert(blockTxs.begin(), job.coinbaseTransaction);

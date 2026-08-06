@@ -51,8 +51,8 @@ void AddressRegistry::registerExchange(const std::string& address, const std::st
     registry[address] = info;
     save();
     
-    LOG_SECURITY(LogLevel::INFO, 
-        "Exchange registered: " + name + " (" + address + ")");
+    LOG_SECURITY(LogLevel::INFO,
+        "Exchange registered: " + name + " (" + address + ")", "AddressRegistry");
 }
 
 void AddressRegistry::registerStakingPool(const std::string& address, const std::string& name,
@@ -71,8 +71,8 @@ void AddressRegistry::registerStakingPool(const std::string& address, const std:
     registry[address] = info;
     save();
     
-    LOG_SECURITY(LogLevel::INFO, 
-        "Staking pool registered: " + name + " (" + address + ")");
+    LOG_SECURITY(LogLevel::INFO,
+        "Staking pool registered: " + name + " (" + address + ")", "AddressRegistry");
 }
 
 void AddressRegistry::registerMerchant(const std::string& address, const std::string& name,
@@ -91,8 +91,8 @@ void AddressRegistry::registerMerchant(const std::string& address, const std::st
     registry[address] = info;
     save();
     
-    LOG_SECURITY(LogLevel::INFO, 
-        "Merchant registered: " + name + " (" + address + ")");
+    LOG_SECURITY(LogLevel::INFO,
+        "Merchant registered: " + name + " (" + address + ")", "AddressRegistry");
 }
 
 void AddressRegistry::registerValidator(const std::string& address, const std::string& name,
@@ -111,8 +111,8 @@ void AddressRegistry::registerValidator(const std::string& address, const std::s
     registry[address] = info;
     save();
     
-    LOG_SECURITY(LogLevel::INFO, 
-        "Validator registered: " + name + " (" + address + ")");
+    LOG_SECURITY(LogLevel::INFO,
+        "Validator registered: " + name + " (" + address + ")", "AddressRegistry");
 }
 
 // ============================================================================
@@ -128,8 +128,8 @@ void AddressRegistry::markAsVerified(const std::string& address,
         it->second.lastVerified = std::time(nullptr);
         save();
         
-        LOG_SECURITY(LogLevel::INFO, 
-            "Entity verified: " + it->second.name + " via " + verificationSource);
+        LOG_SECURITY(LogLevel::INFO,
+            "Entity verified: " + it->second.name + " via " + verificationSource, "AddressRegistry");
     }
 }
 
@@ -230,8 +230,8 @@ void AddressRegistry::unregister(const std::string& address) {
         registry.erase(it);
         save();
         
-        LOG_SECURITY(LogLevel::INFO, 
-            "Entity unregistered: " + name + " (" + address + ")");
+        LOG_SECURITY(LogLevel::INFO,
+            "Entity unregistered: " + name + " (" + address + ")", "AddressRegistry");
     }
 }
 

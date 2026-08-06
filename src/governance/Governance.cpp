@@ -6,7 +6,7 @@
 #include <mutex>
 #include <random>
 
-static std::mutex proposalsMutex;
+[[maybe_unused]] static std::mutex proposalsMutex;
 
 GovernanceSystem::GovernanceSystem() {
     LOG_CORE(LogLevel::INFO, "Governance system initialized");

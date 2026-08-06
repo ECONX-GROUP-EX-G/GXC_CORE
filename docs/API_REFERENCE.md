@@ -8,7 +8,7 @@ GXC-CORE exposes three API interfaces:
 |-----------|-------------|----------|---------|
 | JSON-RPC | 8332 (mainnet) / 18332 (testnet) | JSON-RPC 2.0 | Node control, wallet operations |
 | REST | 8080 | HTTP/HTTPS | Block explorer, public queries |
-| WebSocket | 8081 | WS | Real-time event streaming |
+| WebSocket | 8081 | WS | Real-time event streaming — **not started by `gxc-node` yet**, see below |
 
 ---
 
@@ -455,6 +455,12 @@ Returns admin dashboard statistics (blockchain height, flagged transactions).
 
 ## WebSocket API
 
+> **Status: implemented but not reachable.** `src/WebSocketServer.cpp` is built
+> into the node, but `node_main.cpp` never constructs it — it starts JSON-RPC,
+> REST, and P2P only. The interface below documents the intended surface;
+> connecting to it on a running node will not currently succeed. Wiring it up is
+> tracked under [Planned work](ARCHITECTURE.md#planned-work).
+
 ### Connection
 
 ```javascript
@@ -548,7 +554,7 @@ rpc_threads=4           # Worker threads
 rest_port=8080          # REST listen port
 rest_enabled=true       # Enable REST API
 
-# WebSocket
+# WebSocket (not yet consumed by the node — see the status note above)
 ws_port=8081            # WebSocket listen port
 ws_enabled=true         # Enable WebSocket
 

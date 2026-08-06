@@ -79,11 +79,39 @@ public:
     // Core transaction operations
     std::string calculateHash() const;
     bool verifyTransaction() const;
+
+    /**
+     * Sign every input with `privateKey`.
+     *
+     * All inputs are signed over computeSignatureHash(), which commits to the
+     * outputs. Signing only the outpoint would let anyone who observes a signed
+     * transaction redirect its outputs to themselves and still present a valid
+     * signature.
+     */
     void signInputs(const std::string& privateKey);
 
-    // Traceability Verification - Implementing Your Formula
-    // Ti.Inputs[0].txHash == Ti.PrevTxHash
-    // Ti.Inputs[0].amount == Ti.ReferencedAmount
+    /**
+     * The message that input signatures commit to.
+     *
+     * Covers every input outpoint, every output (address, amount, script), and
+     * the transaction metadata, but deliberately excludes the signature fields
+     * themselves -- they cannot commit to their own value.
+     */
+    std::string computeSignatureHash() const;
+
+    /**
+     * Fill in the Proof-of-Traceability fields from inputs[0] when a wallet has
+     * left them unset, then refresh the transaction hash.
+     *
+     * Third-party wallets that do not know about POT can build a transaction and
+     * call this before signing. Verification stays strict: normalization is a
+     * construction-time convenience, never a validation-time excuse.
+     */
+    void normalizeTraceability();
+
+    // Traceability Verification - the POT formula:
+    //   Ti.Inputs[0].txHash == Ti.PrevTxHash
+    //   Ti.Inputs[0].amount == Ti.ReferencedAmount
     bool verifyTraceabilityFormula() const;
     bool validateInputReference() const;
     bool isTraceabilityValid() const;

@@ -257,7 +257,7 @@ On-chain governance with stake-weighted voting:
 ```
 ┌────────────┐     ┌────────────┐     ┌────────────┐
 │   Peer A   │◄───►│   Peer B   │◄───►│   Peer C   │
-│  P2P:8333  │     │  P2P:8333  │     │  P2P:8333  │
+│  P2P:9333  │     │  P2P:9333  │     │  P2P:9333  │
 └────────────┘     └────────────┘     └────────────┘
 
 Message Types: handshake, ping/pong, block, transaction
@@ -390,8 +390,9 @@ Dependencies:
 
 | Parameter | Mainnet | Testnet |
 |-----------|---------|---------|
-| P2P Port | 8333 | 18333 |
+| P2P Port | 9333 | 19333 |
 | RPC Port | 8332 | 18332 |
+| REST / WebSocket Port | 8080 | 18080 |
 | Block Time Target | 600s (10 min) | 120s (2 min) |
 | Difficulty Retarget | 2,016 blocks | 2,016 blocks |
 | Initial Block Reward | 50 GXC | 50 GXC |
@@ -401,3 +402,67 @@ Dependencies:
 | Network Magic | `GXC\x01` | `GXCT` |
 | Max Block Size | 1 MB | 1 MB |
 | Protocol Version | 70015 | 70015 |
+
+---
+
+## Planned work
+
+Known gaps, in rough priority order. Each is described in more detail under
+[Known limitations](WHITEPAPER.md#17-known-limitations) in the whitepaper.
+
+### Address checksums
+
+`Crypto::generateAddress` emits `prefix || hash160[:34]` with no checksum, so a
+mistyped address is indistinguishable from a valid one and funds sent to it are
+unrecoverable. This needs Base58Check or Bech32 before any real value moves.
+It is a consensus-visible change to the address format.
+
+### Integer amounts
+
+Amounts are `double` throughout. Current parameters stay inside the range where
+doubles represent 1e-8 increments exactly (2⁵³ satoshis ≈ 90M GXC, above the 31M
+cap), so this is not presently a correctness bug — but it is the wrong
+representation for money and forces an epsilon into every comparison. Moving to
+integer satoshis touches the transaction model, serialization, and the RPC
+surface.
+
+### OpenSSL 3.x migration
+
+`src/Crypto.cpp` and `src/HashUtils.cpp` use the low-level `EC_KEY`, `SHA256_`,
+and `RIPEMD160_` interfaces, which OpenSSL 3.x deprecates while keeping
+functional. Both files scope the deprecation diagnostic locally so new warnings
+elsewhere stay visible. The migration target is `EVP_PKEY` for signing and
+`EVP_Digest` for hashing; the existing sign/verify/derive/address tests in
+`tests/test_crypto.cpp` are what make that change verifiable.
+
+### Signature canonicalization
+
+DER signatures are not canonicalized and low-S is not enforced, so a third party
+can re-encode a valid signature and change the transaction id without
+invalidating it. Fixing this means enforcing low-S on both signing and
+verification.
+
+### Ethash naming
+
+The Ethash implementation follows the algorithm's structure but operates on hex
+string representations with a reduced cache, and does not produce
+Ethereum-compatible results. Either make it compatible or rename it so that
+nothing implies drop-in GPU miner support.
+
+### Unreachable server components
+
+`src/WebSocketServer.cpp` and `src/Stratum.cpp` compile and are linked into the
+node, but nothing constructs them: `node_main.cpp` starts `RPCAPI`,
+`RESTServer`, and `P2PNetwork` only. Both need to be instantiated and given a
+port before the documented WebSocket and Stratum surfaces actually exist.
+
+### Subsystem test coverage
+
+The consensus core, transactions, POT, work receipts, mining, staking, sending,
+and serialization are covered. Governance, the cross-chain bridge, the Proof of
+Price oracle, and the token contracts are substantially less so.
+
+### Proof-of-stake security analysis
+
+Long-range attacks, nothing-at-stake mitigation, and slashing conditions are not
+addressed by the current implementation.

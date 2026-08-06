@@ -1,4 +1,5 @@
 #include "../include/Crypto.h"
+#include "../include/Keccak256.h"
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
@@ -6,6 +7,16 @@
 #include <sstream>
 #include <iomanip>
 #include <cstring>
+
+// OpenSSL 3.x deprecates the low-level EC_KEY and RIPEMD160 interfaces in favour
+// of EVP_PKEY, but keeps them working. Migrating the signing path is tracked
+// separately (see docs/ARCHITECTURE.md, "Planned work"); until then the
+// deprecation notices are acknowledged here rather than left to drown out new
+// warnings across the rest of the build.
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 
 namespace Crypto {
 
@@ -284,44 +295,16 @@ std::string ripemd160(const std::string& data) {
     return bytesToHex(hash, RIPEMD160_DIGEST_LENGTH);
 }
 
-// Keccak-256 (using OpenSSL EVP interface)
+// Keccak-256.
+//
+// This uses the in-tree FIPS-202 permutation from Keccak256.cpp rather than
+// OpenSSL. OpenSSL 3.x does not expose a "KECCAK-256" digest -- the previous
+// implementation therefore always fell through to EVP_sha3_256(), which applies
+// SHA-3's 0x06 domain separator instead of original Keccak's 0x01 and produces
+// completely different digests. That silently made every "Keccak-256" hash in
+// the chain incompatible with the Ethereum-style Keccak the protocol documents.
 std::string keccak256(const std::string& data) {
-    // OpenSSL 3.0+ supports Keccak via EVP
-    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-    if (!ctx) {
-        throw std::runtime_error("Failed to create EVP context");
-    }
-    
-    const EVP_MD* md = EVP_MD_fetch(nullptr, "KECCAK-256", nullptr);
-    if (!md) {
-        // Fallback to SHA3-256 if Keccak not available
-        md = EVP_sha3_256();
-        if (!md) {
-            EVP_MD_CTX_free(ctx);
-            // Ultimate fallback: use SHA-256
-            return sha256(data);
-        }
-    }
-    
-    if (EVP_DigestInit_ex(ctx, md, nullptr) != 1) {
-        EVP_MD_CTX_free(ctx);
-        throw std::runtime_error("Failed to initialize digest");
-    }
-    
-    if (EVP_DigestUpdate(ctx, data.c_str(), data.length()) != 1) {
-        EVP_MD_CTX_free(ctx);
-        throw std::runtime_error("Failed to update digest");
-    }
-    
-    uint8_t hash[32];
-    unsigned int hashLen;
-    if (EVP_DigestFinal_ex(ctx, hash, &hashLen) != 1) {
-        EVP_MD_CTX_free(ctx);
-        throw std::runtime_error("Failed to finalize digest");
-    }
-    
-    EVP_MD_CTX_free(ctx);
-    return bytesToHex(hash, hashLen);
+    return keccak256_hash(data);
 }
 
 // Generate address from public key
@@ -346,3 +329,7 @@ std::string generateAddress(const std::string& publicKeyHex, bool testnet) {
 }
 
 } // namespace Crypto
+
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif

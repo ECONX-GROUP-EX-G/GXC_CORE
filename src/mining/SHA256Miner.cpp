@@ -1,7 +1,9 @@
 #include "../../include/mining/SHA256Miner.h"
 #include "../../include/Logger.h"
 #include "../../include/Utils.h"
-#include <immintrin.h>
+// No <immintrin.h>: this file uses no SIMD intrinsics, and the header is x86-only.
+// Including it unconditionally broke every non-x86 build -- Apple Silicon, ARM
+// Linux, RISC-V -- on undeclared __builtin_ia32_* identifiers.
 #include <thread>
 #include <random>
 

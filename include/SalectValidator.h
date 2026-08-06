@@ -7,7 +7,7 @@
 class ValidatorSelector {
 private:
     std::vector<Validator> validators;
-    double beta; // Time weight factor
+    [[maybe_unused]] double beta; // Time weight factor
 
 public:
     // Constructor

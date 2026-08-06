@@ -106,9 +106,9 @@ bool CrossChainBridge::executeTransfer(const std::string& transferId) {
     return true;
 }
 
-bool CrossChainBridge::verifyTransferOnSourceChain(ChainType sourceChain, const std::string& txHash,
-                                                 const std::string& sourceAsset, double amount,
-                                                 const std::string& destinationAddress) {
+bool CrossChainBridge::verifyTransferOnSourceChain(ChainType /*sourceChain*/, const std::string& /*txHash*/,
+                                                 const std::string& /*sourceAsset*/, double /*amount*/,
+                                                 const std::string& /*destinationAddress*/) {
     // In a real implementation, this would verify the transaction on the source chain
     // For simplicity, we'll just return true
     return true;

@@ -215,21 +215,28 @@ std::string StockMarketAPI::deployStock(
         throw std::runtime_error("Unauthorized: Only registered market makers can deploy stocks");
     }
     
-    // Create stock contract
+    // Create stock contract.
+    //
+    // StockContract exposes a default constructor plus one factory per asset
+    // model; there is no four-argument constructor. A market-maker deployment is
+    // a synthetic equity with the maker acting as the price source, so it routes
+    // through createSyntheticEquity().
     auto contract = std::make_shared<StockContract>(
-        ticker,
-        companyName,
-        exchange,
-        makerAddress  // Market maker is the oracle
-    );
-    
+        StockContract::createSyntheticEquity(
+            ticker,
+            companyName,
+            exchange,
+            0,            // supply is issued below, not pre-minted
+            makerAddress  // Market maker is the oracle
+        ));
+
     // Add market maker as authorized issuer
     contract->addAuthorizedIssuer(makerAddress);
     contract->addAuthorizedOracle(makerAddress);
-    
+
     // Issue initial shares to market maker
     contract->issueShares(makerAddress, totalShares);
-    
+
     // Authorize market maker for this stock
     marketMakerRegistry->authorizeStock(makerAddress, ticker);
     
@@ -268,9 +275,9 @@ bool StockMarketAPI::updateStockPrice(
 bool StockMarketAPI::addLiquidity(
     const std::string& makerAddress,
     const std::string& ticker,
-    uint64_t shares,
-    double bidPrice,
-    double askPrice
+    uint64_t /*shares*/,
+    double /*bidPrice*/,
+    double /*askPrice*/
 ) {
     // VERIFY: Only authorized market makers can add liquidity
     if (!marketMakerRegistry->canTradeStock(makerAddress, ticker)) {
@@ -386,7 +393,7 @@ uint64_t StockMarketAPI::getStockBalance(const std::string& address, const std::
     return it->second->balanceOf(address);
 }
 
-bool StockMarketAPI::verifyTradeTraceability(const std::string& txHash) const {
+bool StockMarketAPI::verifyTradeTraceability(const std::string& /*txHash*/) const {
     // TODO: Implement when blockchain->getTransaction() is available
     // For now, return true as all transactions are created with traceability
     return true;

@@ -33,13 +33,8 @@ std::vector<Validator> selectValidatorCommittee(const ValidatorSelector& selecto
     // Select committee members based on weighted stake
     std::vector<Validator> committee;
     
-    // Calculate total weighted stake
-    double totalWeightedStake = 0.0;
-    for (const auto& validator : activeValidators) {
-        totalWeightedStake += validator.getWeightedStake();
-    }
-    
-    // Random selection without replacement
+    // Random selection without replacement. The running total is recomputed
+    // inside the loop below, because each pick removes a validator from the pool.
     std::random_device rd;
     std::mt19937 gen(rd());
     

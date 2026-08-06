@@ -27,7 +27,7 @@ struct MarketMakerInfo {
 class MarketMakerRegistry {
 private:
     std::unordered_map<std::string, MarketMakerInfo> authorizedMakers;
-    Blockchain* blockchain;
+    [[maybe_unused]] Blockchain* blockchain;
     
 public:
     

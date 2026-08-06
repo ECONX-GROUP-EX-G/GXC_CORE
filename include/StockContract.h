@@ -114,7 +114,7 @@ private:
     // Metadata
     std::string sector;
     std::string industry;
-    uint64_t marketCap;
+    [[maybe_unused]] uint64_t marketCap;
     double dividendYield;
     
 public:

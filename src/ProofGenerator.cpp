@@ -14,7 +14,7 @@ ProofGenerator::~ProofGenerator() {
     LOG_INFO("Proof Generator destroyed");
 }
 
-uint64_t ProofGenerator::calculateRecoverableAmount(const std::string& current_tx,
+uint64_t ProofGenerator::calculateRecoverableAmount(const std::string& /*current_tx*/,
                                                     const std::string& current_holder,
                                                     double taint_score) {
     // Get current balance of holder

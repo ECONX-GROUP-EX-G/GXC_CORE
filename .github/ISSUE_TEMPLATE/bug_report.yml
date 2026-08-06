@@ -1,0 +1,73 @@
+name: Bug report
+description: Something in the node, miner, or tooling behaves incorrectly
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report.
+
+        **Do not use this form for security vulnerabilities.** Consensus flaws,
+        remote crashes, key-handling issues, and anything that could cost users
+        funds go through [SECURITY.md](../../SECURITY.md) instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you observed, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands, config, and inputs. A failing test case is ideal.
+      placeholder: |
+        1. cmake -S . -B build -DBUILD_TESTS=ON
+        2. cmake --build build
+        3. ./build/gxc-node --testnet
+        4. ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Consensus / validation
+        - Proof of Traceability
+        - Mining (SHA-256 / Ethash / GXHash)
+        - P2P networking
+        - RPC / REST / WebSocket API
+        - Wallet / keys / addresses
+        - Storage (LevelDB)
+        - Build system
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Output of `git rev-parse --short HEAD`, or a release tag.
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: "Ubuntu 24.04, GCC 13.3, OpenSSL 3.0.13"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste log output. It will be formatted as code automatically.
+      render: shell

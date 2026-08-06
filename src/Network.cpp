@@ -289,7 +289,6 @@ bool Network::addPeer(const std::string& host, int peerPort, int socket) {
     
     // Check peer limit
     const size_t MAX_PEERS = 125;
-    const size_t MIN_PEERS = 3;
     if (peers.size() >= MAX_PEERS) {
         LOG_NETWORK(LogLevel::WARNING, "Maximum peer count reached");
         return false;
@@ -447,17 +446,17 @@ void Network::processMessage(NetworkPeer& peer, const std::string& message) {
     }
 }
 
-void Network::handlePingMessage(NetworkPeer& peer, const std::string& message) {
+void Network::handlePingMessage(NetworkPeer& peer, const std::string& /*message*/) {
     // Send pong response
     sendPong(peer.host + ":" + std::to_string(peer.port));
 }
 
-void Network::handlePongMessage(NetworkPeer& peer, const std::string& message) {
+void Network::handlePongMessage(NetworkPeer& peer, const std::string& /*message*/) {
     // Update peer's last seen time
     peer.lastSeen = Utils::getCurrentTimestamp();
 }
 
-void Network::handleHandshakeMessage(NetworkPeer& peer, const std::string& message) {
+void Network::handleHandshakeMessage(NetworkPeer& peer, const std::string& /*message*/) {
     LOG_NETWORK(LogLevel::DEBUG, "Received handshake from " + peer.host);
     
     // Process handshake data

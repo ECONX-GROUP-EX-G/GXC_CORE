@@ -407,7 +407,7 @@ uint64_t Logger::getTotalLogEntries() const {
     return 0;
 }
 
-uint64_t Logger::getLogEntriesByLevel(LogLevel level) const {
+uint64_t Logger::getLogEntriesByLevel(LogLevel /*level*/) const {
     // This would require level-specific counters in a real implementation
     return 0;
 }
@@ -424,22 +424,22 @@ std::string Logger::getLogStatistics() const {
 }
 
 // Search and filtering (simplified implementations)
-std::vector<std::string> Logger::searchLogs(const std::string& pattern) const {
+std::vector<std::string> Logger::searchLogs(const std::string& /*pattern*/) const {
     // This would require implementing actual log file searching
     return {};
 }
 
-std::vector<std::string> Logger::getLogsByCategory(const std::string& category) const {
+std::vector<std::string> Logger::getLogsByCategory(const std::string& /*category*/) const {
     // This would require implementing category filtering
     return {};
 }
 
-std::vector<std::string> Logger::getLogsByLevel(LogLevel level) const {
+std::vector<std::string> Logger::getLogsByLevel(LogLevel /*level*/) const {
     // This would require implementing level filtering
     return {};
 }
 
-std::vector<std::string> Logger::getLogsByTimeRange(uint64_t startTime, uint64_t endTime) const {
+std::vector<std::string> Logger::getLogsByTimeRange(uint64_t /*startTime*/, uint64_t /*endTime*/) const {
     // This would require implementing time range filtering
     return {};
 }

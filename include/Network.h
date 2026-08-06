@@ -257,7 +257,7 @@ private:
     std::thread peerManagerThread;
     std::thread messageProcessorThread;
     
-    uint64_t lastUpdate;
+    [[maybe_unused]] uint64_t lastUpdate;
     
     // Private methods
     bool initializeSocket();

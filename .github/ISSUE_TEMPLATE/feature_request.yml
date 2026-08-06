@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a change to the protocol, node, or tooling
+labels: ["enhancement", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Changes that alter block or transaction validity are consensus changes.
+        They need a specification, a migration path, and test coverage before
+        they can be merged — please describe all three below.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't be done today, and who is affected?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What you want to happen. Be specific about the mechanism.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: consensus
+    attributes:
+      label: Does this change consensus?
+      description: Would it change which blocks or transactions are considered valid?
+      options:
+        - "No — it is node-local (API, tooling, performance, docs)"
+        - "Yes — it changes block or transaction validity"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

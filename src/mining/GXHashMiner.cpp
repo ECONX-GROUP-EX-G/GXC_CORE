@@ -275,7 +275,7 @@ void GXHashMiner::updateTraceabilityCache(const MiningJob& job) {
               std::to_string(job.transactions.size()) + " transactions");
 }
 
-bool GXHashMiner::validateTraceability(const std::string& txHash, const std::string& prevTxHash) {
+bool GXHashMiner::validateTraceability(const std::string& txHash, const std::string& /*prevTxHash*/) {
     // GXC Traceability Formula:
     // Ti.Inputs[0].txHash == Ti.PrevTxHash
     // Ti.Inputs[0].amount == Ti.ReferencedAmount

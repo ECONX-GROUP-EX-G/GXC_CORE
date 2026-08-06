@@ -262,34 +262,36 @@ bool StockContract::executeSplit(double ratio) {
             LOG_INFO("Synthetic equity: Price will adjust via feed, supply unchanged");
             return true;
             
-        case AssetType::CUSTODIAL_BACKED:
+        case AssetType::CUSTODIAL_BACKED: {
             // Custodial: Must mint new tokens proportionally
             // Because we represent real shares 1:1
             uint64_t oldSupply = totalShares;
             totalShares = static_cast<uint64_t>(totalShares * ratio);
-            
+
             // Adjust all balances
             for (auto& [address, balance] : shareBalances) {
                 balance = static_cast<uint64_t>(balance * ratio);
             }
-            
-            LOG_INFO("Custodial-backed: Minted new tokens. Supply: " + 
+
+            LOG_INFO("Custodial-backed: Minted new tokens. Supply: " +
                     std::to_string(oldSupply) + " -> " + std::to_string(totalShares));
             return true;
+        }
             
-        case AssetType::ISSUER_AUTHORIZED:
+        case AssetType::ISSUER_AUTHORIZED: {
             // Issuer: Company handles split on cap table
             // Blockchain reflects the change
-            uint64_t oldSupply2 = totalShares;
+            uint64_t oldSupply = totalShares;
             totalShares = static_cast<uint64_t>(totalShares * ratio);
-            
+
             for (auto& [address, balance] : shareBalances) {
                 balance = static_cast<uint64_t>(balance * ratio);
             }
-            
-            LOG_INFO("Issuer-authorized: Split executed on cap table. Supply: " + 
-                    std::to_string(oldSupply2) + " -> " + std::to_string(totalShares));
+
+            LOG_INFO("Issuer-authorized: Split executed on cap table. Supply: " +
+                    std::to_string(oldSupply) + " -> " + std::to_string(totalShares));
             return true;
+        }
     }
     
     return false;

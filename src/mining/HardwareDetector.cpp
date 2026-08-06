@@ -44,6 +44,6 @@ std::string HardwareDetector::getGPUInfo(uint32_t deviceId) {
 std::string HardwareDetector::getASICInfo(uint32_t deviceId) {
     return "ASIC device info for device " + std::to_string(deviceId);
 }
-bool HardwareDetector::isDeviceSupported(const MiningDevice& device, MiningAlgorithm algorithm) {
+bool HardwareDetector::isDeviceSupported(const MiningDevice& /*device*/, MiningAlgorithm /*algorithm*/) {
     return true;
 }

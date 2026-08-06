@@ -358,7 +358,7 @@ std::string ValidatorRegistry::serialize() const {
     return ss.str();
 }
 
-bool ValidatorRegistry::deserialize(const std::string& data) {
+bool ValidatorRegistry::deserialize(const std::string& /*data*/) {
     // Simple deserialization implementation
     // In production, use proper serialization format (JSON, protobuf, etc.)
     return true;

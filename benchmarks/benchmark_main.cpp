@@ -6,9 +6,9 @@
 #include "../include/Logger.h"
 #include "../include/HashUtils.h"
 #include "../include/Utils.h"
-#include "../src/mining/SHA256Miner.cpp"
-#include "../src/mining/EthashMiner.cpp"
-#include "../src/mining/GXHashMiner.cpp"
+#include "../include/mining/SHA256Miner.h"
+#include "../include/mining/EthashMiner.h"
+#include "../include/mining/GXHashMiner.h"
 
 // Initialize benchmark environment
 class BenchmarkEnvironment : public benchmark::Environment {

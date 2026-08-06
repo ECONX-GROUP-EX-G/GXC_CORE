@@ -120,7 +120,7 @@ void WebSocketServer::removeClient(const std::string& clientId) {
     }
 }
 
-void WebSocketServer::broadcastMessage(const std::string& message) {
+void WebSocketServer::broadcastMessage(const std::string& /*message*/) {
     std::lock_guard<std::mutex> lock(clientsMutex);
     
     for (auto& client : clients) {
@@ -198,8 +198,7 @@ void WebSocketServer::handleIncomingConnections() {
 
 void WebSocketServer::sendPeriodicUpdates() {
     static auto lastUpdate = Utils::getCurrentTimestamp();
-    auto currentTime = Utils::getCurrentTimestamp();
-    
+    const auto currentTime = Utils::getCurrentTimestamp();
     // Send updates every 10 seconds
     if (currentTime - lastUpdate >= 10) {
         // Send blockchain stats
@@ -212,8 +211,6 @@ void WebSocketServer::sendPeriodicUpdates() {
 
 void WebSocketServer::cleanupClients() {
     std::lock_guard<std::mutex> lock(clientsMutex);
-    
-    auto currentTime = Utils::getCurrentTimestamp();
     
     for (auto it = clients.begin(); it != clients.end();) {
         // Remove clients that haven't pinged in 60 seconds

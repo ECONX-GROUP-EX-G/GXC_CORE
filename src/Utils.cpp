@@ -109,7 +109,7 @@ bool fileExists(const std::string& filename) {
     return file.good();
 }
 
-bool createDirectory(const std::string& path) {
+bool createDirectory(const std::string& /*path*/) {
     // Simplified directory creation - would use proper OS calls in real implementation
     return true;
 }
@@ -334,7 +334,7 @@ std::string encodeBase64(const std::vector<uint8_t>& data) {
     return result;
 }
 
-std::vector<uint8_t> decodeBase64(const std::string& encoded) {
+std::vector<uint8_t> decodeBase64(const std::string& /*encoded*/) {
     // Simplified base64 decoding
     std::vector<uint8_t> result;
     // Implementation would go here in production
