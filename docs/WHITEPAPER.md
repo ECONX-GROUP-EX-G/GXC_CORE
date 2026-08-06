@@ -555,10 +555,13 @@ reading, so a truncated or hostile frame is rejected rather than read out of
 bounds. List payloads additionally bound the element count by the remaining
 buffer size.
 
-APIs: JSON-RPC 2.0 (`getblockcount`, `getblock`, `gettransaction`, `getbalance`,
-`sendtoaddress`, `getmininginfo`, `validateaddress`, `getstakinginfo`, …), a REST
-surface under `/api/`, a WebSocket stream for block/transaction/stats events, and
-Stratum for pool mining.
+APIs the node starts: JSON-RPC 2.0 (`getblockcount`, `getblock`,
+`gettransaction`, `getbalance`, `sendtoaddress`, `getmininginfo`,
+`validateaddress`, `getstakinginfo`, …) and a REST surface under `/api/`.
+
+> **Not implemented:** a WebSocket event stream and a Stratum server are both
+> present in the tree (`src/WebSocketServer.cpp`, `src/Stratum.cpp`) but
+> `gxc-node` never constructs either, so neither is reachable on a running node.
 
 *Source: `src/MessageHandler.cpp`, `src/P2PNetwork.cpp`, `src/RPCAPI.cpp`,
 `src/RESTServer.cpp`, `src/WebSocketServer.cpp`, `src/Stratum.cpp`.

@@ -231,7 +231,11 @@ curl http://localhost:8080/api/block/height/1
 curl http://localhost:8080/api/balance/GXCaddress
 ```
 
-WebSocket on the REST port streams block, transaction, and network-stats events.
+A WebSocket server for streaming block, transaction, and network-stats events is
+implemented in `src/WebSocketServer.cpp`, but `gxc-node` does not start it yet —
+it currently launches RPC, REST, and P2P only. Same for the Stratum server in
+`src/Stratum.cpp`. Wiring both up is [planned work](docs/ARCHITECTURE.md#planned-work).
+
 See [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md).
 
 ---

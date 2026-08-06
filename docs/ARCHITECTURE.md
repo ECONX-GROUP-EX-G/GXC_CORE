@@ -257,7 +257,7 @@ On-chain governance with stake-weighted voting:
 ```
 ┌────────────┐     ┌────────────┐     ┌────────────┐
 │   Peer A   │◄───►│   Peer B   │◄───►│   Peer C   │
-│  P2P:8333  │     │  P2P:8333  │     │  P2P:8333  │
+│  P2P:9333  │     │  P2P:9333  │     │  P2P:9333  │
 └────────────┘     └────────────┘     └────────────┘
 
 Message Types: handshake, ping/pong, block, transaction
@@ -448,6 +448,13 @@ The Ethash implementation follows the algorithm's structure but operates on hex
 string representations with a reduced cache, and does not produce
 Ethereum-compatible results. Either make it compatible or rename it so that
 nothing implies drop-in GPU miner support.
+
+### Unreachable server components
+
+`src/WebSocketServer.cpp` and `src/Stratum.cpp` compile and are linked into the
+node, but nothing constructs them: `node_main.cpp` starts `RPCAPI`,
+`RESTServer`, and `P2PNetwork` only. Both need to be instantiated and given a
+port before the documented WebSocket and Stratum surfaces actually exist.
 
 ### Subsystem test coverage
 
