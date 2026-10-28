@@ -411,6 +411,13 @@ add_executable(gxc-explorer
 )
 target_link_libraries(gxc-explorer gxc_core)
 
+# Mining and ledger audit tool: mines a real chain with every algorithm and
+# reconciles issuance against the UTXO set.
+add_executable(gxc-minedemo
+    tools/minedemo_main.cpp
+)
+target_link_libraries(gxc-minedemo gxc_core)
+
 # Network diagnostic tool
 add_executable(gxc-netdiag
     tools/netdiag_main.cpp
@@ -422,7 +429,7 @@ target_link_libraries(gxc-netdiag gxc_core)
 include(GNUInstallDirs)
 
 # Install executables
-install(TARGETS gxc-node gxc-cli gxc-keygen gxc-tx gxc-explorer gxc-netdiag
+install(TARGETS gxc-node gxc-cli gxc-keygen gxc-tx gxc-explorer gxc-netdiag gxc-minedemo
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
@@ -485,6 +492,11 @@ if(BUILD_TESTS)
             Sending)
         add_test(NAME ${suite} COMMAND gxc-tests ${suite})
     endforeach()
+
+    # End-to-end: mine a real chain with every algorithm and reconcile issuance
+    # against the UTXO set. Two blocks per algorithm keeps it quick -- GXHash is
+    # Argon2id at 64 MiB and costs ~180 ms per hash by design.
+    add_test(NAME MineAndReconcile COMMAND gxc-minedemo 2)
 
     message(STATUS "Building test suite: gxc-tests")
 endif()
