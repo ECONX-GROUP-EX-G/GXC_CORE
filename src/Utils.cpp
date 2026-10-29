@@ -1,4 +1,5 @@
 #include "../include/Utils.h"
+#include "../include/Crypto.h"
 #include <random>
 #include <sstream>
 #include <iomanip>
@@ -88,20 +89,10 @@ double parseAmount(const std::string& amountStr) {
 }
 
 bool isValidAddress(const std::string& address) {
-    // Basic address validation
-    if (address.empty() || address.length() < 26 || address.length() > 62) {
-        return false;
-    }
-    
-    // Check for valid characters (alphanumeric)
-    return std::all_of(address.begin(), address.end(), [](char c) {
-        return std::isalnum(c);
-    });
-}
-
-std::string generateAddress() {
-    // Generate a simplified address (in real implementation would use proper cryptography)
-    return "gxc" + randomString(30);
+    // One definition of address validity, in Crypto. This used to accept any
+    // alphanumeric string between 26 and 62 characters -- which is to say, it
+    // accepted essentially anything a user could mistype.
+    return Crypto::isValidAddress(address);
 }
 
 bool fileExists(const std::string& filename) {

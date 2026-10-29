@@ -307,25 +307,86 @@ std::string keccak256(const std::string& data) {
     return keccak256_hash(data);
 }
 
+namespace {
+
+constexpr size_t HASH160_HEX_LEN = 40;   // 20 bytes
+constexpr size_t CHECKSUM_HEX_LEN = 8;   // 4 bytes
+
+const char* addressPrefix(bool testnet) { return testnet ? "tGXC" : "GXC"; }
+
+/** First four bytes of SHA-256d(prefix || hash160), hex-encoded. */
+std::string addressChecksum(const std::string& prefix, const std::vector<uint8_t>& hash160) {
+    std::string payload = prefix;
+    payload.append(reinterpret_cast<const char*>(hash160.data()), hash160.size());
+
+    const std::vector<uint8_t> digest = hexToBytes(sha256d(payload));
+    return bytesToHex(digest.data(), 4);
+}
+
+/** Split an address into prefix and hex body, or return false if malformed. */
+bool splitAddress(const std::string& address, std::string& prefix, std::string& body) {
+    for (bool testnet : {true, false}) {   // check "tGXC" before "GXC"
+        const std::string candidate = addressPrefix(testnet);
+        if (address.size() == candidate.size() + HASH160_HEX_LEN + CHECKSUM_HEX_LEN &&
+            address.compare(0, candidate.size(), candidate) == 0) {
+            prefix = candidate;
+            body = address.substr(candidate.size());
+            return true;
+        }
+    }
+    return false;
+}
+
+bool isLowerHex(const std::string& s) {
+    for (char c : s) {
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
+    }
+    return true;
+}
+
+} // namespace
+
 // Generate address from public key
 std::string generateAddress(const std::string& publicKeyHex, bool testnet) {
     // Convert public key to bytes
     std::vector<uint8_t> pubKeyBytes = hexToBytes(publicKeyHex);
-    
+
     // SHA-256 hash of public key
     uint8_t sha256Hash[SHA256_DIGEST_LENGTH];
     SHA256(pubKeyBytes.data(), pubKeyBytes.size(), sha256Hash);
-    
-    // RIPEMD-160 hash of SHA-256 hash
+
+    // RIPEMD-160 hash of SHA-256 hash -- kept whole, never truncated
     uint8_t ripemd160Hash[RIPEMD160_DIGEST_LENGTH];
     RIPEMD160(sha256Hash, SHA256_DIGEST_LENGTH, ripemd160Hash);
-    
-    // Convert to hex
-    std::string hash160 = bytesToHex(ripemd160Hash, RIPEMD160_DIGEST_LENGTH);
-    
-    // Add prefix
-    std::string prefix = testnet ? "tGXC" : "GXC";
-    return prefix + hash160.substr(0, 34);
+
+    const std::vector<uint8_t> hash160(ripemd160Hash, ripemd160Hash + RIPEMD160_DIGEST_LENGTH);
+    const std::string prefix = addressPrefix(testnet);
+
+    return prefix + bytesToHex(hash160) + addressChecksum(prefix, hash160);
+}
+
+bool isValidAddress(const std::string& address) {
+    std::string prefix, body;
+    if (!splitAddress(address, prefix, body) || !isLowerHex(body)) {
+        return false;
+    }
+
+    const std::string hash160Hex = body.substr(0, HASH160_HEX_LEN);
+    const std::string checksum = body.substr(HASH160_HEX_LEN);
+
+    return addressChecksum(prefix, hexToBytes(hash160Hex)) == checksum;
+}
+
+bool isTestnetAddress(const std::string& address) {
+    return isValidAddress(address) && address.compare(0, 4, "tGXC") == 0;
+}
+
+std::string addressHash160(const std::string& address) {
+    std::string prefix, body;
+    if (!isValidAddress(address) || !splitAddress(address, prefix, body)) {
+        return "";
+    }
+    return body.substr(0, HASH160_HEX_LEN);
 }
 
 } // namespace Crypto
