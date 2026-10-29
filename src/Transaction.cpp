@@ -12,6 +12,67 @@
 // of GXC is 1e-8; this sits an order of magnitude below that.
 static constexpr double AMOUNT_EPSILON = 1e-9;
 
+bool isSupportedSignatureScheme(SignatureScheme scheme) {
+    switch (scheme) {
+        case SignatureScheme::ECDSA_SECP256K1:
+            return true;
+        case SignatureScheme::ML_DSA_44:
+        case SignatureScheme::FN_DSA_512:
+        case SignatureScheme::HYBRID_ECDSA_ML_DSA_44:
+            // Reserved but not implemented. Returning false here is what stops
+            // an input from declaring a scheme nothing can verify and being
+            // waved through as "not our problem".
+            return false;
+    }
+    return false;
+}
+
+const char* signatureSchemeName(SignatureScheme scheme) {
+    switch (scheme) {
+        case SignatureScheme::ECDSA_SECP256K1:        return "ecdsa-secp256k1";
+        case SignatureScheme::ML_DSA_44:              return "ml-dsa-44";
+        case SignatureScheme::FN_DSA_512:             return "fn-dsa-512";
+        case SignatureScheme::HYBRID_ECDSA_ML_DSA_44: return "hybrid-ecdsa-ml-dsa-44";
+    }
+    return "unknown";
+}
+
+namespace {
+
+/** Verify one input's signature under whichever scheme it declares. */
+bool verifyUnderScheme(const TransactionInput& input, const std::string& sigHash) {
+    switch (input.scheme) {
+        case SignatureScheme::ECDSA_SECP256K1:
+            return Crypto::verifySignature(sigHash, input.signature, input.publicKey);
+
+        case SignatureScheme::ML_DSA_44:
+        case SignatureScheme::FN_DSA_512:
+        case SignatureScheme::HYBRID_ECDSA_ML_DSA_44:
+            // Not implemented; isSupportedSignatureScheme() rejects these before
+            // verification is reached. Fail closed regardless.
+            return false;
+    }
+    return false;
+}
+
+/** Produce a signature over `sigHash` under `scheme`. */
+bool signUnderScheme(SignatureScheme scheme, const std::string& sigHash,
+                     const std::string& privateKey, std::string& signatureOut) {
+    switch (scheme) {
+        case SignatureScheme::ECDSA_SECP256K1:
+            signatureOut = Crypto::signData(sigHash, privateKey);
+            return true;
+
+        case SignatureScheme::ML_DSA_44:
+        case SignatureScheme::FN_DSA_512:
+        case SignatureScheme::HYBRID_ECDSA_ML_DSA_44:
+            return false;
+    }
+    return false;
+}
+
+} // namespace
+
 // Default constructor
 Transaction::Transaction() 
     : type(TransactionType::NORMAL), timestamp(std::time(nullptr)), referencedAmount(0.0),
@@ -83,9 +144,12 @@ Transaction::Transaction(const std::string& minerAddress, double blockReward)
 std::string Transaction::calculateHash() const {
     std::stringstream ss;
     
-    // Include inputs
+    // Include inputs. The scheme is part of the identity: without it, editing
+    // the scheme byte alone would leave the transaction id unchanged while
+    // changing how the input is verified.
     for (const auto& input : inputs) {
-        ss << input.txHash << input.outputIndex << input.signature << input.amount << input.publicKey;
+        ss << input.txHash << input.outputIndex << input.signature << input.amount
+           << input.publicKey << static_cast<int>(input.scheme);
     }
     
     // Include outputs
@@ -260,10 +324,12 @@ std::string Transaction::computeSignatureHash() const {
     std::stringstream ss;
     ss << std::setprecision(17);
 
-    // Which coins are being spent.
+    // Which coins are being spent, and under which scheme. Committing to the
+    // scheme stops an input being downgraded to a weaker one in transit.
     ss << inputs.size() << '|';
     for (const auto& input : inputs) {
-        ss << input.txHash << '|' << input.outputIndex << '|' << input.amount << '|' << input.publicKey << '|';
+        ss << input.txHash << '|' << input.outputIndex << '|' << input.amount << '|'
+           << input.publicKey << '|' << static_cast<int>(input.scheme) << '|';
     }
 
     // Where they are going. Omitting this was the flaw: an attacker who observed
@@ -301,7 +367,14 @@ bool Transaction::validateSignatures() const {
             return false;
         }
 
-        if (!Crypto::verifySignature(sigHash, input.signature, input.publicKey)) {
+        // An input declaring a scheme this build cannot verify is rejected
+        // rather than skipped -- accepting it would let a transaction bypass
+        // authorization entirely by naming a scheme nobody implements.
+        if (!isSupportedSignatureScheme(input.scheme)) {
+            return false;
+        }
+
+        if (!verifyUnderScheme(input, sigHash)) {
             return false;
         }
     }
@@ -310,23 +383,34 @@ bool Transaction::validateSignatures() const {
 }
 
 void Transaction::signInputs(const std::string& privateKey) {
-    // Proper ECDSA signing with secp256k1.
+    signInputs(privateKey, SignatureScheme::ECDSA_SECP256K1);
+}
+
+bool Transaction::signInputs(const std::string& privateKey, SignatureScheme scheme) {
+    if (!isSupportedSignatureScheme(scheme)) {
+        return false;
+    }
+
     const std::string publicKey = Crypto::derivePublicKey(privateKey);
 
-    // The public key is part of the signing serialization, so it has to be in
-    // place on every input before the hash is computed.
+    // The public key and the scheme are both part of the signing serialization,
+    // so both have to be in place on every input before the hash is computed.
     for (auto& input : inputs) {
         input.publicKey = publicKey;
+        input.scheme = scheme;
         input.signature.clear();
     }
 
     const std::string sigHash = computeSignatureHash();
     for (auto& input : inputs) {
-        input.signature = Crypto::signData(sigHash, privateKey);
+        if (!signUnderScheme(scheme, sigHash, privateKey, input.signature)) {
+            return false;
+        }
     }
 
     // Signatures feed into calculateHash(), so the transaction id changes.
     txHash = calculateHash();
+    return true;
 }
 
 // Utility functions
@@ -369,11 +453,12 @@ std::string Transaction::serialize() const {
        << (isGoldBacked ? "1" : "0") << "|" << (isCoinbase ? "1" : "0") << "|"
        << static_cast<int>(type) << "|";
     
-    // Serialize inputs
+    // Serialize inputs. Six fields each, the last being the signature scheme.
     ss << inputs.size() << "|";
     for (const auto& input : inputs) {
-        ss << input.txHash << "|" << input.outputIndex << "|" 
-           << input.signature << "|" << input.amount << "|" << input.publicKey << "|";
+        ss << input.txHash << "|" << input.outputIndex << "|"
+           << input.signature << "|" << input.amount << "|" << input.publicKey << "|"
+           << static_cast<int>(input.scheme) << "|";
     }
     
     // Serialize outputs
@@ -446,7 +531,7 @@ bool Transaction::deserialize(const std::string& data) {
         size_t inputCount = std::stoul(parts[index++]);
         inputs.clear();
         for (size_t i = 0; i < inputCount; i++) {
-            if (index + 4 >= parts.size()) return false;
+            if (index + 5 >= parts.size()) return false;  // 6 mandatory fields
 
             TransactionInput input;
             input.txHash = parts[index++];
@@ -454,6 +539,21 @@ bool Transaction::deserialize(const std::string& data) {
             input.signature = parts[index++];
             input.amount = std::stod(parts[index++]);
             input.publicKey = parts[index++];
+
+            // Scheme identifier. Mandatory: the field sits mid-record, so
+            // treating it as optional would make it ambiguous with the output
+            // count that follows and silently misalign the whole parse. An
+            // unknown value is rejected rather than defaulted, so a
+            // forward-dated input can never be downgraded to classical.
+            if (!Utils::isNumeric(parts[index])) {
+                return false;
+            }
+            const unsigned long rawScheme = std::stoul(parts[index++]);
+            if (rawScheme > static_cast<unsigned long>(SignatureScheme::HYBRID_ECDSA_ML_DSA_44)) {
+                return false;
+            }
+            input.scheme = static_cast<SignatureScheme>(rawScheme);
+
             inputs.push_back(input);
         }
 
@@ -583,7 +683,7 @@ bool Transaction::verifyScript(const std::string& /*signature*/, const std::stri
     // 2. Verify that publicKey generates this address
     // Note: We need to know if it's testnet or mainnet.
     // Usually address prefix determines this.
-    bool isTestnet = (address.length() >= 4 && address.substr(0, 4) == "tGXC");
+    const bool isTestnet = Crypto::isTestnetAddress(address);
     std::string derivedAddress = Crypto::generateAddress(publicKey, isTestnet);
 
     if (derivedAddress != address) {
