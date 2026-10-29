@@ -5,12 +5,52 @@
 #include <ctime>
 #include <cstdint>
 
+/**
+ * Which signature scheme authorises an input.
+ *
+ * Carrying this on every input is what allows a second scheme to be introduced
+ * later as a soft fork: old inputs keep declaring ECDSA_SECP256K1 and stay
+ * valid, while new inputs can declare something else. Adding the field after
+ * the fact would mean re-serializing every transaction on the chain.
+ *
+ * The value is part of the signature hash, so an input cannot be downgraded to
+ * a weaker scheme in transit.
+ *
+ * Shor's algorithm breaks secp256k1 outright, so a post-quantum scheme will be
+ * needed eventually. The likely candidates are the NIST standards: ML-DSA
+ * (FIPS 204) at ~2.4 KB per signature, or FN-DSA (FIPS 206, pending) at ~0.7 KB.
+ * Both are far larger than ECDSA's ~71 bytes, which is the real cost. A hybrid
+ * mode -- requiring a valid classical *and* post-quantum signature -- is the
+ * conservative migration, since forging one alone does not move funds.
+ *
+ * Values are explicit and must never be reused or renumbered.
+ */
+enum class SignatureScheme : uint8_t {
+    ECDSA_SECP256K1 = 0,   // The only scheme currently implemented.
+
+    // Reserved. Declaring one of these is rejected until it is implemented, so
+    // a transaction cannot claim an unverifiable scheme and slip through.
+    ML_DSA_44 = 1,         // FIPS 204, NIST level 2
+    FN_DSA_512 = 2,        // FIPS 206 (pending), NIST level 1
+    HYBRID_ECDSA_ML_DSA_44 = 3,
+};
+
+/** True when this build can actually verify signatures of the given scheme. */
+bool isSupportedSignatureScheme(SignatureScheme scheme);
+
+/** Stable short name, for logging and API responses. */
+const char* signatureSchemeName(SignatureScheme scheme);
+
 struct TransactionInput {
     std::string txHash;      // Reference to previous transaction
     uint32_t outputIndex;    // Index of the output in the referenced transaction
     std::string signature;   // Signature to verify ownership
     double amount;           // Amount from the referenced output (for traceability)
     std::string publicKey;   // Public key for verification
+
+    // Which scheme `signature` was produced with. Defaults to the classical
+    // scheme so existing code and older payloads keep working unchanged.
+    SignatureScheme scheme = SignatureScheme::ECDSA_SECP256K1;
 };
 
 struct TransactionOutput {
@@ -89,6 +129,14 @@ public:
      * signature.
      */
     void signInputs(const std::string& privateKey);
+
+    /**
+     * Sign every input under an explicit scheme.
+     *
+     * @return false, leaving the transaction unsigned, when this build cannot
+     *         produce signatures of that scheme.
+     */
+    bool signInputs(const std::string& privateKey, SignatureScheme scheme);
 
     /**
      * The message that input signatures commit to.
