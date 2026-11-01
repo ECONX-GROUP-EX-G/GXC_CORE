@@ -1571,15 +1571,18 @@ bool Blockchain::validateTransaction(const Transaction& tx) {
         return false;
     }
 
-    // Validate address network prefix
-    bool isTestnet = Config::isTestnet();
-    std::string expectedPrefix = isTestnet ? "tGXC" : "GXC";
+    // Validate addresses: well-formed, checksum intact, and on this network.
+    //
+    // The prefix alone is not enough. A mistyped address keeps its prefix, so a
+    // prefix-only check happily accepts a destination whose private key nobody
+    // holds -- and the coins sent there are gone.
+    const bool isTestnet = Config::isTestnet();
+    const std::string expectedPrefix = isTestnet ? "tGXC" : "GXC";
 
-    // Helper to check address prefix
     auto checkAddress = [&](const std::string& addr) -> bool {
         if (addr.empty()) return true; // Empty addresses handled by other validation
-        if (addr.length() < expectedPrefix.length()) return false;
-        return addr.substr(0, expectedPrefix.length()) == expectedPrefix;
+        if (!Crypto::isValidAddress(addr)) return false;
+        return Crypto::isTestnetAddress(addr) == isTestnet;
     };
 
     // Check outputs (receivers)

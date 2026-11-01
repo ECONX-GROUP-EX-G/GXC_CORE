@@ -470,6 +470,7 @@ if(BUILD_TESTS)
         tests/test_mining.cpp
         tests/test_staking.cpp
         tests/test_sending.cpp
+        tests/test_signature_scheme.cpp
     )
 
     target_link_libraries(gxc-tests gxc_core)
@@ -489,7 +490,8 @@ if(BUILD_TESTS)
             ProofOfWork
             Mining
             Staking
-            Sending)
+            Sending
+            SignatureScheme)
         add_test(NAME ${suite} COMMAND gxc-tests ${suite})
     endforeach()
 

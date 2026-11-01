@@ -190,6 +190,106 @@ GXC_TEST(Crypto, DistinctKeysYieldDistinctAddresses) {
     CHECK_EQ(addresses.size(), size_t(16));
 }
 
+// The address checksum is what stands between a typo and unrecoverable loss.
+// Without one, every mistyped address is a valid-looking destination whose
+// private key nobody holds.
+GXC_TEST(Crypto, AddressCarriesTheFullHash160) {
+    const Crypto::KeyPair keys = Crypto::generateKeyPair();
+    const std::string address = Crypto::generateAddress(keys.publicKey, false);
+
+    // "GXC" + 40 hex (20-byte hash160) + 8 hex (4-byte checksum).
+    CHECK_EQ(address.size(), size_t(51));
+    CHECK_EQ(Crypto::addressHash160(address).size(), size_t(40));
+
+    // Truncating the hash to 136 bits, as an earlier version did, left 2^68
+    // collision resistance. The full 160 bits must survive into the address.
+    auto bytesToString = [](const std::vector<uint8_t>& b) {
+        return std::string(b.begin(), b.end());
+    };
+    const std::string pubKeyBytes = bytesToString(Crypto::hexToBytes(keys.publicKey));
+    const std::string shaBytes = bytesToString(Crypto::hexToBytes(Crypto::sha256(pubKeyBytes)));
+
+    CHECK_EQ(Crypto::addressHash160(address), Crypto::ripemd160(shaBytes));
+}
+
+GXC_TEST(Crypto, GeneratedAddressesValidate) {
+    for (int i = 0; i < 8; i++) {
+        const Crypto::KeyPair keys = Crypto::generateKeyPair();
+        CHECK(Crypto::isValidAddress(Crypto::generateAddress(keys.publicKey, false)));
+        CHECK(Crypto::isValidAddress(Crypto::generateAddress(keys.publicKey, true)));
+    }
+}
+
+GXC_TEST(Crypto, ChecksumRejectsEverySingleCharacterTypo) {
+    const Crypto::KeyPair keys = Crypto::generateKeyPair();
+    const std::string address = Crypto::generateAddress(keys.publicKey, false);
+
+    int corruptions = 0;
+    for (size_t i = 3; i < address.size(); i++) {   // skip the prefix
+        for (char c : std::string("0123456789abcdef")) {
+            if (address[i] == c) continue;
+            std::string typo = address;
+            typo[i] = c;
+            CHECK_FALSE(Crypto::isValidAddress(typo));
+            corruptions++;
+        }
+    }
+    // 48 mutable positions x 15 alternatives.
+    CHECK_EQ(corruptions, 720);
+}
+
+GXC_TEST(Crypto, ChecksumRejectsTransposedCharacters) {
+    const Crypto::KeyPair keys = Crypto::generateKeyPair();
+    const std::string address = Crypto::generateAddress(keys.publicKey, false);
+
+    // Swapping adjacent characters is the other typo people actually make.
+    int checked = 0;
+    for (size_t i = 3; i + 1 < address.size(); i++) {
+        if (address[i] == address[i + 1]) continue;
+        std::string swapped = address;
+        std::swap(swapped[i], swapped[i + 1]);
+        CHECK_FALSE(Crypto::isValidAddress(swapped));
+        checked++;
+    }
+    CHECK(checked > 30);
+}
+
+GXC_TEST(Crypto, MalformedAddressesAreRejected) {
+    CHECK_FALSE(Crypto::isValidAddress(""));
+    CHECK_FALSE(Crypto::isValidAddress("GXC"));
+    CHECK_FALSE(Crypto::isValidAddress("tGXC"));
+    CHECK_FALSE(Crypto::isValidAddress(std::string("GXC") + std::string(48, '0')));  // bad checksum
+    CHECK_FALSE(Crypto::isValidAddress(std::string("BTC") + std::string(48, 'a')));  // wrong prefix
+    CHECK_FALSE(Crypto::isValidAddress(std::string("GXC") + std::string(47, 'a')));  // too short
+    CHECK_FALSE(Crypto::isValidAddress(std::string("GXC") + std::string(49, 'a')));  // too long
+    CHECK_FALSE(Crypto::isValidAddress(std::string("GXC") + std::string(48, 'z')));  // non-hex
+
+    // The placeholder addresses that appear in fixtures must not validate --
+    // if they did, the checksum would not be doing anything.
+    CHECK_FALSE(Crypto::isValidAddress("GXCminer000000000000000000000000000"));
+    CHECK_FALSE(Crypto::isValidAddress("GXCrecipient0000000000000000000000"));
+}
+
+GXC_TEST(Crypto, NetworkIsDistinguishedByCheckedPrefix) {
+    const Crypto::KeyPair keys = Crypto::generateKeyPair();
+    const std::string mainnet = Crypto::generateAddress(keys.publicKey, false);
+    const std::string testnet = Crypto::generateAddress(keys.publicKey, true);
+
+    CHECK_FALSE(Crypto::isTestnetAddress(mainnet));
+    CHECK(Crypto::isTestnetAddress(testnet));
+
+    // Same key, same hash160 -- only the prefix and checksum differ, so one
+    // cannot be turned into the other by editing the prefix alone.
+    CHECK_EQ(Crypto::addressHash160(mainnet), Crypto::addressHash160(testnet));
+    CHECK_FALSE(Crypto::isValidAddress("t" + mainnet));
+    CHECK_FALSE(Crypto::isValidAddress(testnet.substr(1)));
+}
+
+GXC_TEST(Crypto, AddressHash160IsEmptyForInvalidInput) {
+    CHECK_EQ(Crypto::addressHash160("not-an-address"), std::string(""));
+    CHECK_EQ(Crypto::addressHash160(std::string("GXC") + std::string(48, '0')), std::string(""));
+}
+
 GXC_TEST(Crypto, HexConversionRoundTrips) {
     const std::vector<uint8_t> bytes{0x00, 0x01, 0x7f, 0x80, 0xff, 0xde, 0xad};
     const std::string hex = Crypto::bytesToHex(bytes);

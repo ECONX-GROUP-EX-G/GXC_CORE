@@ -5759,7 +5759,7 @@ JsonValue RPCAPI::trackStolenFunds(const JsonValue& params) {
             if (depth >= maxHops) break;
             
             // Check if it's an address or transaction
-            bool isAddress = current.find("GXC") == 0 || current.find("tGXC") == 0;
+            bool isAddress = Crypto::isValidAddress(current);
             
             if (isAddress) {
                 // Track address

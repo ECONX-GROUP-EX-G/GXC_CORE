@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "transaction.h"
+#include "Crypto.h"
 
 class Wallet {
 private:
@@ -111,19 +112,21 @@ public:
     
     // ============= END THIRD-PARTY WALLET SUPPORT =============
     
-    // Static address validation methods
+    // Static address validation methods.
+    //
+    // These delegate to Crypto so there is one definition of what a valid
+    // address is. Checking only the prefix, as this used to, accepted any
+    // string beginning "GXC" -- including a mistyped one, which is exactly the
+    // case an address checksum exists to catch.
     static bool isValidAddress(const std::string& address) {
-        // GXC addresses start with "GXC" (mainnet) or "tGXC" (testnet)
-        if (address.length() < 30) return false;
-        return address.substr(0, 3) == "GXC" || address.substr(0, 4) == "tGXC";
+        return Crypto::isValidAddress(address);
     }
-    
+
     static bool isTestnetAddress(const std::string& address) {
-        return address.length() >= 4 && address.substr(0, 4) == "tGXC";
+        return Crypto::isTestnetAddress(address);
     }
     
     static bool isMainnetAddress(const std::string& address) {
-        return address.length() >= 3 && address.substr(0, 3) == "GXC" && 
-               (address.length() < 4 || address[3] != 'C' || address.substr(0,4) != "tGXC");
+        return Crypto::isValidAddress(address) && !Crypto::isTestnetAddress(address);
     }
 };
