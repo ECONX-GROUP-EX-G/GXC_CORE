@@ -19,9 +19,14 @@ enum class LogLevel {
 
 class Logger {
 private:
-    static std::unique_ptr<Logger> instance;
-    static std::mutex instanceMutex;
-    
+    // The instance and the mutex guarding it deliberately do not live here as
+    // static data members. Destructors throughout the codebase log as they
+    // run, including during static destruction, and the order objects are
+    // torn down in across translation units is not something they can
+    // coordinate: a logger held in a static member would be gone while other
+    // statics were still logging through it. They live in storage that is
+    // never reclaimed instead -- see loggerState() in Logger.cpp.
+
     std::ofstream logFile;
     std::string logFilePath;
     LogLevel minLogLevel;

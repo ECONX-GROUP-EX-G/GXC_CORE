@@ -14,9 +14,27 @@
 
 using json = nlohmann::json;
 
-// Static instance
-std::unique_ptr<Database> Database::instance = nullptr;
-std::mutex Database::instanceMutex;
+namespace {
+
+/**
+ * The database singleton's process-lifetime state, never reclaimed.
+ *
+ * Held as ordinary statics, the mutex could be destroyed while an object torn
+ * down later still called getInstance() or shutdown() -- a lock on a destroyed
+ * std::mutex, which libc++ reports as EINVAL and std::lock_guard turns into a
+ * throw, aborting the process at exit. See the matching note in Logger.cpp.
+ */
+struct DatabaseState {
+    std::mutex mutex;
+    Database* instance = nullptr;
+};
+
+DatabaseState& databaseState() {
+    static DatabaseState* const state = new DatabaseState();
+    return *state;
+}
+
+} // namespace
 
 // Key prefixes
 const std::string Database::PREFIX_BLOCK = "blk:";
@@ -43,35 +61,44 @@ Database::~Database() {
 }
 
 bool Database::initialize(const std::string& dbPath) {
-    std::lock_guard<std::mutex> lock(instanceMutex);
-    
-    if (instance) {
+    DatabaseState& state = databaseState();
+    std::lock_guard<std::mutex> lock(state.mutex);
+
+    if (state.instance) {
         LOG_DATABASE(LogLevel::WARNING, "Database already initialized");
         return true;
     }
-    
-    instance = std::make_unique<Database>();
-    return instance->open(dbPath);
+
+    state.instance = new Database();
+    if (!state.instance->open(dbPath)) {
+        delete state.instance;
+        state.instance = nullptr;
+        return false;
+    }
+    return true;
 }
 
 void Database::shutdown() {
-    std::lock_guard<std::mutex> lock(instanceMutex);
-    
-    if (instance) {
-        instance->close();
-        instance.reset();
+    DatabaseState& state = databaseState();
+    std::lock_guard<std::mutex> lock(state.mutex);
+
+    if (state.instance) {
+        state.instance->close();
+        delete state.instance;
+        state.instance = nullptr;
         LOG_DATABASE(LogLevel::INFO, "Database shutdown complete");
     }
 }
 
 Database& Database::getInstance() {
-    std::lock_guard<std::mutex> lock(instanceMutex);
-    
-    if (!instance) {
+    DatabaseState& state = databaseState();
+    std::lock_guard<std::mutex> lock(state.mutex);
+
+    if (!state.instance) {
         throw std::runtime_error("Database not initialized");
     }
-    
-    return *instance;
+
+    return *state.instance;
 }
 
 bool Database::open(const std::string& dbPath) {

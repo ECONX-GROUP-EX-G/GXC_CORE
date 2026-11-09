@@ -7,9 +7,10 @@
 
 class Config {
 private:
-    // Static members for singleton pattern
-    static std::map<std::string, std::string> configMap;
-    static std::mutex configMutex;
+    // The settings map and its guard live in storage that is never reclaimed
+    // rather than in static data members here: objects torn down at exit read
+    // configuration as they go, and static destruction order across
+    // translation units cannot be relied on. See configState() in Config.cpp.
     static bool initialized;
     
     // Private constructor for singleton

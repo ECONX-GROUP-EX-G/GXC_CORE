@@ -22,12 +22,16 @@
 #include "../include/blockchain.h"
 #include "../include/transaction.h"
 
+#include <signal.h>
 #include <unistd.h>
 
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
+#include <system_error>
+#include <utility>
 #include <vector>
 
 namespace gxctest {
@@ -88,6 +92,7 @@ public:
         const std::string& dir = directory;
         std::error_code ec;
         std::filesystem::remove_all(dir, ec);
+        removeStaleDirectories();
 
         Config::setDefaults();
         Config::set("testnet", "true");
@@ -112,14 +117,6 @@ public:
         miner = Crypto::generateAddress(minerKeys.publicKey, true);
 
         build();
-    }
-
-    ~TestChain() {
-        // The chain lives for the whole process; drop its database on the way
-        // out so repeated runs do not fill the temp directory.
-        chain.shutdown();
-        std::error_code ec;
-        std::filesystem::remove_all(directory, ec);
     }
 
     TestChain(const TestChain&) = delete;
@@ -258,12 +255,50 @@ public:
 private:
     std::string directory;
 
+    /** Prefix shared by every run's database directory. */
+    static const char* dirPrefix() { return "gxc-testnet-fraud-suite-"; }
+
+    /**
+     * Drop databases left by runs that are no longer going.
+     *
+     * The fixture is deliberately never destroyed -- see testChain() -- so it
+     * cannot clean up after itself on the way out. Clearing other runs'
+     * directories on the way in bounds the temp space instead, and skipping
+     * live pids keeps a parallel CTest run's siblings intact.
+     */
+    void removeStaleDirectories() const {
+        std::error_code ec;
+        const auto parent = std::filesystem::temp_directory_path();
+        for (std::filesystem::directory_iterator it(parent, ec), end; it != end;
+             it.increment(ec)) {
+            if (ec) {
+                return;
+            }
+            const std::string name = it->path().filename().string();
+            if (name.rfind(dirPrefix(), 0) != 0 || it->path().string() == directory) {
+                continue;
+            }
+
+            const std::string pid = name.substr(std::strlen(dirPrefix()));
+            if (pid.empty() || pid.find_first_not_of("0123456789") != std::string::npos) {
+                continue;
+            }
+            // Still running: another suite of this same CTest invocation.
+            if (::kill(static_cast<pid_t>(std::stol(pid)), 0) == 0) {
+                continue;
+            }
+
+            std::error_code removeError;
+            std::filesystem::remove_all(it->path(), removeError);
+        }
+    }
+
     static std::string dataDir() {
         // "testnet" has to appear in the path: the database refuses to open a
         // store whose name does not say so while the node is in testnet mode,
         // which is the guard that keeps test runs away from mainnet data.
         const std::string name =
-            "gxc-testnet-fraud-suite-" + std::to_string(static_cast<long>(::getpid()));
+            std::string(dirPrefix()) + std::to_string(static_cast<long>(::getpid()));
         return (std::filesystem::temp_directory_path() / name).string();
     }
 
@@ -379,10 +414,19 @@ private:
     }
 };
 
-/** The shared chain, built on first use. */
+/**
+ * The shared chain, built on first use and never destroyed.
+ *
+ * The leak is deliberate. A Blockchain torn down during static destruction
+ * logs from its own destructor and from each of its members', which means
+ * reaching for the logger at a point where the order of teardown across
+ * translation units decides whether it is still there. Holding the fixture for
+ * the life of the process keeps the suites independent of that ordering; the
+ * memory goes back when the process exits either way.
+ */
 inline TestChain& testChain() {
-    static TestChain instance;
-    return instance;
+    static TestChain* const instance = new TestChain();
+    return *instance;
 }
 
 } // namespace gxctest
