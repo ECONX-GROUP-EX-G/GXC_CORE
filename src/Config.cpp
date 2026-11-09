@@ -5,17 +5,38 @@
 #include <sstream>
 #include <algorithm>
 
-// Static members
-std::map<std::string, std::string> Config::configMap;
-std::mutex Config::configMutex;
 bool Config::initialized = false;
+
+namespace {
+
+/**
+ * The configuration's process-lifetime state, never reclaimed.
+ *
+ * Destructors read configuration while the process is exiting, and whether
+ * this map and its mutex still exist by then depends on static destruction
+ * order across translation units. Held as ordinary statics they could be gone:
+ * reading a destroyed std::map is undefined, and locking a destroyed
+ * std::mutex is reported by libc++ as EINVAL, which std::lock_guard turns into
+ * a throw and an abort on exit. See the matching note in Logger.cpp.
+ */
+struct ConfigState {
+    std::map<std::string, std::string> map;
+    std::mutex mutex;
+};
+
+ConfigState& configState() {
+    static ConfigState* const state = new ConfigState();
+    return *state;
+}
+
+} // namespace
 
 Config::Config() {
     // Private constructor
 }
 
 bool Config::initialize() {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
     if (initialized) {
         return true;
@@ -31,9 +52,9 @@ bool Config::initialize() {
 }
 
 void Config::shutdown() {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
-    configMap.clear();
+    configState().map.clear();
     initialized = false;
     
     LOG_CONFIG(LogLevel::INFO, "Configuration system shutdown");
@@ -41,98 +62,98 @@ void Config::shutdown() {
 
 void Config::setDefaults() {
     // Network settings
-    configMap["network_port"] = "9333";
-    configMap["rpc_port"] = "8332";
-    configMap["rest_port"] = "8080";
-    configMap["max_peers"] = "20";
-    configMap["min_peers"] = "8";
-    configMap["connection_timeout"] = "30";
+    configState().map["network_port"] = "9333";
+    configState().map["rpc_port"] = "8332";
+    configState().map["rest_port"] = "8080";
+    configState().map["max_peers"] = "20";
+    configState().map["min_peers"] = "8";
+    configState().map["connection_timeout"] = "30";
     
     // Blockchain settings
-    configMap["data_dir"] = "./gxc_data";
-    configMap["testnet"] = "false";
-    configMap["difficulty_adjustment_interval"] = "10";
-    configMap["target_block_time"] = "600"; // 10 minutes
-    configMap["max_block_size"] = "1048576"; // 1MB
-    configMap["block_reward"] = "50.0";
+    configState().map["data_dir"] = "./gxc_data";
+    configState().map["testnet"] = "false";
+    configState().map["difficulty_adjustment_interval"] = "10";
+    configState().map["target_block_time"] = "600"; // 10 minutes
+    configState().map["max_block_size"] = "1048576"; // 1MB
+    configState().map["block_reward"] = "50.0";
     
     // Mining settings
-    configMap["enable_mining"] = "false";
-    configMap["mining_threads"] = "1";
-    configMap["mining_algorithm"] = "GXHASH";  // Default to GXHASH (ASIC-resistant)
-    configMap["pool_address"] = "";
-    configMap["miner_address"] = "";
+    configState().map["enable_mining"] = "false";
+    configState().map["mining_threads"] = "1";
+    configState().map["mining_algorithm"] = "GXHASH";  // Default to GXHASH (ASIC-resistant)
+    configState().map["pool_address"] = "";
+    configState().map["miner_address"] = "";
     
     // Wallet settings
-    configMap["wallet_file"] = "wallet.dat";
-    configMap["wallet_backup_interval"] = "3600"; // 1 hour
-    configMap["transaction_fee"] = "0.001";
-    configMap["min_confirmations"] = "6";
+    configState().map["wallet_file"] = "wallet.dat";
+    configState().map["wallet_backup_interval"] = "3600"; // 1 hour
+    configState().map["transaction_fee"] = "0.001";
+    configState().map["min_confirmations"] = "6";
     
     // Dynamic fee settings
-    configMap["enable_dynamic_fees"] = "true";
-    configMap["base_transaction_fee"] = "0.001";
-    configMap["min_tx_fee"] = "0.001";  // Minimum fee (same as base)
-    configMap["max_transaction_fee"] = "0.01";
-    configMap["fee_low_threshold"] = "10";
-    configMap["fee_medium_threshold"] = "50";
-    configMap["fee_high_threshold"] = "100";
-    configMap["fee_low_multiplier"] = "1.0";
-    configMap["fee_medium_multiplier"] = "1.5";
-    configMap["fee_high_multiplier"] = "2.0";
-    configMap["fee_very_high_multiplier"] = "3.0";
+    configState().map["enable_dynamic_fees"] = "true";
+    configState().map["base_transaction_fee"] = "0.001";
+    configState().map["min_tx_fee"] = "0.001";  // Minimum fee (same as base)
+    configState().map["max_transaction_fee"] = "0.01";
+    configState().map["fee_low_threshold"] = "10";
+    configState().map["fee_medium_threshold"] = "50";
+    configState().map["fee_high_threshold"] = "100";
+    configState().map["fee_low_multiplier"] = "1.0";
+    configState().map["fee_medium_multiplier"] = "1.5";
+    configState().map["fee_high_multiplier"] = "2.0";
+    configState().map["fee_very_high_multiplier"] = "3.0";
     
     // Logging settings
-    configMap["log_level"] = "INFO";
-    configMap["log_file"] = "gxc.log";
-    configMap["log_max_size"] = "10485760"; // 10MB
-    configMap["log_max_files"] = "5";
-    configMap["log_to_console"] = "true";
+    configState().map["log_level"] = "INFO";
+    configState().map["log_file"] = "gxc.log";
+    configState().map["log_max_size"] = "10485760"; // 10MB
+    configState().map["log_max_files"] = "5";
+    configState().map["log_to_console"] = "true";
     
     // Security settings
-    configMap["enable_ssl"] = "false";
-    configMap["ssl_cert_file"] = "";
-    configMap["ssl_key_file"] = "";
-    configMap["max_connections"] = "100";
-    configMap["ban_threshold"] = "10";
-    configMap["ban_duration"] = "86400"; // 24 hours
+    configState().map["enable_ssl"] = "false";
+    configState().map["ssl_cert_file"] = "";
+    configState().map["ssl_key_file"] = "";
+    configState().map["max_connections"] = "100";
+    configState().map["ban_threshold"] = "10";
+    configState().map["ban_duration"] = "86400"; // 24 hours
     
     // Performance settings
-    configMap["cache_size"] = "268435456"; // 256MB
-    configMap["mempool_size"] = "50000000"; // 50MB
-    configMap["checkpoint_interval"] = "1000";
-    configMap["vacuum_interval"] = "604800"; // 1 week
+    configState().map["cache_size"] = "268435456"; // 256MB
+    configState().map["mempool_size"] = "50000000"; // 50MB
+    configState().map["checkpoint_interval"] = "1000";
+    configState().map["vacuum_interval"] = "604800"; // 1 week
     
     // Traceability settings
-    configMap["enable_traceability"] = "true";
-    configMap["traceability_validation"] = "strict";
-    configMap["trace_depth_limit"] = "10000";
+    configState().map["enable_traceability"] = "true";
+    configState().map["traceability_validation"] = "strict";
+    configState().map["trace_depth_limit"] = "10000";
     
     // API settings
-    configMap["enable_rest_api"] = "true";
-    configMap["enable_rpc_api"] = "true";
-    configMap["api_rate_limit"] = "100";
-    configMap["api_key"] = "";
+    configState().map["enable_rest_api"] = "true";
+    configState().map["enable_rpc_api"] = "true";
+    configState().map["api_rate_limit"] = "100";
+    configState().map["api_key"] = "";
     
     // Governance settings
-    configMap["governance_enabled"] = "true";
-    configMap["proposal_deposit"] = "100.0";
-    configMap["voting_period"] = "604800"; // 1 week
-    configMap["quorum_threshold"] = "0.33";
+    configState().map["governance_enabled"] = "true";
+    configState().map["proposal_deposit"] = "100.0";
+    configState().map["voting_period"] = "604800"; // 1 week
+    configState().map["quorum_threshold"] = "0.33";
     
     // Cross-chain settings
-    configMap["bridge_enabled"] = "false";
-    configMap["bridge_validators"] = "3";
-    configMap["bridge_threshold"] = "2";
+    configState().map["bridge_enabled"] = "false";
+    configState().map["bridge_validators"] = "3";
+    configState().map["bridge_threshold"] = "2";
     
     // Development settings
-    configMap["debug_mode"] = "false";
-    configMap["enable_profiling"] = "false";
-    configMap["stats_interval"] = "300"; // 5 minutes
+    configState().map["debug_mode"] = "false";
+    configState().map["enable_profiling"] = "false";
+    configState().map["stats_interval"] = "300"; // 5 minutes
 }
 
 bool Config::loadFromFile(const std::string& filename) {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
     LOG_CONFIG(LogLevel::INFO, "Loading configuration from: " + filename);
     
@@ -173,7 +194,7 @@ bool Config::loadFromFile(const std::string& filename) {
             value = value.substr(1, value.length() - 2);
         }
         
-        configMap[key] = value;
+        configState().map[key] = value;
         LOG_CONFIG(LogLevel::DEBUG, "Loaded config: " + key + " = " + value);
     }
     
@@ -184,7 +205,7 @@ bool Config::loadFromFile(const std::string& filename) {
 }
 
 bool Config::saveToFile(const std::string& filename) {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
     LOG_CONFIG(LogLevel::INFO, "Saving configuration to: " + filename);
     
@@ -214,7 +235,7 @@ bool Config::saveToFile(const std::string& filename) {
         }
         file << "# " << capCategory << " Settings\n";
         
-        for (const auto& [key, value] : configMap) {
+        for (const auto& [key, value] : configState().map) {
             if (key.find(category) == 0 || 
                 (category == "blockchain" && (key == "data_dir" || key == "testnet")) ||
                 (category == "debug" && key == "debug_mode")) {
@@ -232,10 +253,10 @@ bool Config::saveToFile(const std::string& filename) {
 }
 
 std::string Config::get(const std::string& key, const std::string& defaultValue) {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
-    auto it = configMap.find(key);
-    if (it != configMap.end()) {
+    auto it = configState().map.find(key);
+    if (it != configState().map.end()) {
         return it->second;
     }
     
@@ -282,9 +303,9 @@ bool Config::getBool(const std::string& key, bool defaultValue) {
 }
 
 void Config::set(const std::string& key, const std::string& value) {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
-    configMap[key] = value;
+    configState().map[key] = value;
     LOG_CONFIG(LogLevel::DEBUG, "Config updated: " + key + " = " + value);
 }
 
@@ -301,28 +322,28 @@ void Config::setBool(const std::string& key, bool value) {
 }
 
 bool Config::has(const std::string& key) {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
-    return configMap.find(key) != configMap.end();
+    return configState().map.find(key) != configState().map.end();
 }
 
 void Config::remove(const std::string& key) {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
-    auto it = configMap.find(key);
-    if (it != configMap.end()) {
-        configMap.erase(it);
+    auto it = configState().map.find(key);
+    if (it != configState().map.end()) {
+        configState().map.erase(it);
         LOG_CONFIG(LogLevel::DEBUG, "Config removed: " + key);
     }
 }
 
 std::vector<std::string> Config::getKeys() {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
     std::vector<std::string> keys;
-    keys.reserve(configMap.size());
+    keys.reserve(configState().map.size());
     
-    for (const auto& [key, value] : configMap) {
+    for (const auto& [key, value] : configState().map) {
         keys.push_back(key);
     }
     
@@ -330,20 +351,20 @@ std::vector<std::string> Config::getKeys() {
 }
 
 std::map<std::string, std::string> Config::getAll() {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
-    return configMap;
+    return configState().map;
 }
 
 void Config::clear() {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
-    configMap.clear();
+    configState().map.clear();
     LOG_CONFIG(LogLevel::INFO, "Configuration cleared");
 }
 
 bool Config::validate() {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
     LOG_CONFIG(LogLevel::INFO, "Validating configuration");
     
@@ -420,11 +441,11 @@ bool Config::validate() {
 }
 
 void Config::printConfig() {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
     LOG_CONFIG(LogLevel::INFO, "Current configuration:");
     
-    for (const auto& [key, value] : configMap) {
+    for (const auto& [key, value] : configState().map) {
         // Hide sensitive values
         std::string displayValue = value;
         if (key.find("password") != std::string::npos || 
@@ -439,7 +460,7 @@ void Config::printConfig() {
 }
 
 std::string Config::getConfigSummary() {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     
     std::ostringstream oss;
     oss << "GXC Configuration Summary:\n";
@@ -520,7 +541,7 @@ void Config::setNetworkMode(bool testnet) {
 }
 
 bool Config::isInitialized() {
-    std::lock_guard<std::mutex> lock(configMutex);
+    std::lock_guard<std::mutex> lock(configState().mutex);
     return initialized;
 }
 

@@ -7,7 +7,13 @@
 #include <algorithm>
 #include <sstream>
 
-FraudDetection::FraudDetection(Blockchain* bc) : blockchain(bc) {
+FraudDetection::FraudDetection(Blockchain* bc)
+    : blockchain(bc), proofGenerator(nullptr), reversalExecutor(nullptr) {
+    // The reversal components are wired in later by setReversalSystem(). They
+    // must start null: the generateReversalProof/validateReversalProof/
+    // executeReversal entry points all test them before use, and an
+    // indeterminate pointer makes those guards read garbage and call through
+    // it rather than failing closed.
     LOG_INFO("Fraud Detection System initialized");
 }
 
@@ -150,22 +156,34 @@ double FraudDetection::calculateTaint(const Transaction& tx) {
         return 0.0; // Coinbase transactions have no taint
     }
     
+    // Two passes, and it has to be two: the weights are shares of the whole
+    // input value, so the denominator is not known until every input has been
+    // counted. Dividing by a running subtotal instead makes w_0 always 1.0,
+    // lets Sum(w_i) exceed 1, and makes the score depend on the order the
+    // inputs happen to appear in -- the same transaction scoring differently
+    // after a relayer reorders it.
     double totalInputValue = 0.0;
-    double weightedTaintSum = 0.0;
-    
     for (const auto& input : inputs) {
         totalInputValue += input.amount;
-        
-        // Get taint of input transaction
+    }
+
+    if (totalInputValue <= 0.0) {
+        return 0.0; // Nothing to apportion; avoid dividing by zero.
+    }
+
+    double weightedTaintSum = 0.0;
+    for (const auto& input : inputs) {
         auto it = taintMap.find(input.txHash);
         if (it != taintMap.end()) {
-            double inputTaint = it->second.taintScore;
-            double weight = input.amount / totalInputValue;
-            weightedTaintSum += weight * inputTaint;
+            const double weight = input.amount / totalInputValue;
+            weightedTaintSum += weight * it->second.taintScore;
         }
     }
-    
-    return weightedTaintSum;
+
+    // Sum(w_i) <= 1 and every tau(T_i) <= 1, so the result is already in
+    // [0,1]; clamp defensively so a rounding artefact cannot push a score past
+    // 1.0 and trip the validator's own range check downstream.
+    return std::min(1.0, weightedTaintSum);
 }
 
 double FraudDetection::getTaintScore(const std::string& txHash) const {
@@ -324,12 +342,35 @@ bool FraudDetection::checkReAggregation(const Transaction& tx) {
 }
 
 // Rule 4: Dormancy then Activation
-bool FraudDetection::checkDormancyActivation(const Transaction& /*tx*/, const TaintInfo& taint) {
-    // Check if funds were dormant
-    uint64_t currentTime = std::time(nullptr);
-    uint64_t dormancyPeriod = currentTime - taint.timestamp;
-    
-    return (dormancyPeriod > DORMANCY_PERIOD && taint.taintScore > TAINT_THRESHOLD);
+bool FraudDetection::checkDormancyActivation(const Transaction& tx, const TaintInfo& taint) {
+    // How long the funds sat still before this transaction moved them: the gap
+    // between receiving them and spending them.
+    //
+    // Measuring instead from taint.timestamp -- which propagateTaint sets to
+    // the moment the score was computed, not to anything about the funds --
+    // meant this rule could not fire at all on freshly propagated taint
+    // (the gap is always ~0), and fired on every transaction once a stored
+    // taint record was a week old, whether or not the funds had moved.
+    if (taint.ancestry.size() < 2) {
+        return false;
+    }
+
+    const std::string& prevTxHash = taint.ancestry[taint.ancestry.size() - 2];
+    auto prevTx = blockchain->getTransaction(prevTxHash);
+
+    if (!prevTx) {
+        return false;
+    }
+
+    // Unsigned arithmetic: a parent that is somehow newer than its child would
+    // otherwise wrap to an enormous gap and fire the rule on every such pair.
+    if (tx.getTimestamp() < prevTx->getTimestamp()) {
+        return false;
+    }
+
+    const uint64_t heldFor = tx.getTimestamp() - prevTx->getTimestamp();
+
+    return (heldFor > DORMANCY_PERIOD && taint.taintScore > TAINT_THRESHOLD);
 }
 
 // Rule 5: Clean Zone Entry

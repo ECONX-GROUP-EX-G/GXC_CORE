@@ -18,10 +18,12 @@ private:
     leveldb::ReadOptions readOptions;
     leveldb::WriteOptions writeOptions;
     
-    // Static members for singleton pattern
-    static std::unique_ptr<Database> instance;
-    static std::mutex instanceMutex;
-    
+    // The singleton and its guard live in storage that is never reclaimed
+    // rather than in static data members here, for the same reason the logger
+    // does: objects still being torn down at exit reach for the database, and
+    // static destruction order across translation units cannot be relied on.
+    // See databaseState() in Database.cpp.
+
     // Database initialization
     bool open(const std::string& dbPath);
     bool checkDatabaseNetwork(bool isTestnet);

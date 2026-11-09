@@ -3,6 +3,7 @@
 #include "../include/FraudDetection.h"
 #include "../include/Logger.h"
 #include "../include/HashUtils.h"
+#include "../include/Utils.h"
 #include <sstream>
 
 ProofGenerator::ProofGenerator(Blockchain* bc, FraudDetection* fd)
@@ -17,16 +18,23 @@ ProofGenerator::~ProofGenerator() {
 uint64_t ProofGenerator::calculateRecoverableAmount(const std::string& /*current_tx*/,
                                                     const std::string& current_holder,
                                                     double taint_score) {
-    // Get current balance of holder
-    uint64_t current_balance = blockchain->getBalance(current_holder);
-    
-    // Calculate recoverable amount: R = τ × Balance
-    uint64_t recoverable = static_cast<uint64_t>(taint_score * current_balance);
-    
-    LOG_INFO("Recoverable amount calculated: " + std::to_string(recoverable) + 
-             " (taint: " + std::to_string(taint_score) + 
-             ", balance: " + std::to_string(current_balance) + ")");
-    
+    // Balances are GXC as a double; every amount on the reversal path -- the
+    // fee pool's balance, STANDARD_FEE, the executor's own balance check --
+    // is an integer count of satoshis. Convert here, once, so the proof
+    // carries satoshis like everything downstream expects. Truncating to
+    // whole GXC instead silently rounded a 49.98 GXC recovery down to 49,
+    // and left the executor comparing GXC against satoshis.
+    const double current_balance_gxc = blockchain->getBalance(current_holder);
+
+    // R = tau * Balance
+    const double recoverable_gxc = taint_score * current_balance_gxc;
+    const uint64_t recoverable = static_cast<uint64_t>(
+        recoverable_gxc * static_cast<double>(Utils::SATOSHIS_PER_COIN));
+
+    LOG_INFO("Recoverable amount calculated: " + std::to_string(recoverable) +
+             " satoshis (taint: " + std::to_string(taint_score) +
+             ", balance: " + std::to_string(current_balance_gxc) + " GXC)");
+
     return recoverable;
 }
 
@@ -287,8 +295,11 @@ bool ProofGenerator::validateProof(const ProofOfFeasibility& proof) {
         return false;
     }
     
-    // Verify recoverable amount doesn't exceed current balance
-    uint64_t current_balance = blockchain->getBalance(proof.current_holder);
+    // Verify recoverable amount doesn't exceed current balance. getBalance()
+    // is GXC; recoverable_amount is satoshis -- compare them in the same unit.
+    const uint64_t current_balance = static_cast<uint64_t>(
+        blockchain->getBalance(proof.current_holder) *
+        static_cast<double>(Utils::SATOSHIS_PER_COIN));
     if (proof.recoverable_amount > current_balance) {
         LOG_ERROR("Proof validation failed: Recoverable amount exceeds current balance");
         return false;

@@ -6,9 +6,34 @@
 #include <ctime>
 #include <condition_variable>
 
-// Static member definitions
-std::unique_ptr<Logger> Logger::instance = nullptr;
-std::mutex Logger::instanceMutex;
+namespace {
+
+/**
+ * The logger's process-lifetime state, in storage that is never reclaimed.
+ *
+ * Objects all over this codebase log from their destructors, so the logger is
+ * used during static destruction -- and the order in which statics are torn
+ * down across translation units is not something those objects can
+ * coordinate. Held as ordinary statics, the mutex and the instance could be
+ * destroyed while another static was still logging through them: a lock on a
+ * destroyed std::mutex, which libstdc++ happens to tolerate but libc++ reports
+ * as EINVAL, making std::lock_guard throw and the process abort on exit.
+ *
+ * Allocating once and never freeing costs one small block for the life of the
+ * process and removes the ordering problem entirely, which is the trade the
+ * standard immortal-singleton pattern makes.
+ */
+struct LoggerState {
+    std::mutex mutex;
+    Logger* instance = nullptr;
+};
+
+LoggerState& loggerState() {
+    static LoggerState* const state = new LoggerState();
+    return *state;
+}
+
+} // namespace
 
 // Static const members are defined inline in C++17
 const std::string Logger::DEFAULT_LOG_FILE = "gxc.log";
@@ -33,16 +58,22 @@ Logger::~Logger() {
 }
 
 Logger& Logger::getInstance() {
-    std::lock_guard<std::mutex> lock(instanceMutex);
-    if (!instance) {
-        instance = std::unique_ptr<Logger>(new Logger());
+    LoggerState& state = loggerState();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.instance) {
+        state.instance = new Logger();
     }
-    return *instance;
+    return *state.instance;
 }
 
 void Logger::cleanup() {
-    std::lock_guard<std::mutex> lock(instanceMutex);
-    instance.reset();
+    // Closes the log file and stops the async thread. A later log call builds
+    // a fresh instance, which is what makes this safe to call from a
+    // shutdown path that other destructors still log after.
+    LoggerState& state = loggerState();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    delete state.instance;
+    state.instance = nullptr;
 }
 
 bool Logger::initialize() {
