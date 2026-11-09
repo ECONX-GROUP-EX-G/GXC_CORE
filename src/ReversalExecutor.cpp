@@ -4,6 +4,7 @@
 #include "../include/ReversalFeePool.h"
 #include "../include/Logger.h"
 #include "../include/HashUtils.h"
+#include "../include/Utils.h"
 #include <sstream>
 
 ReversalExecutor::ReversalExecutor(Blockchain* bc, ProofGenerator* pg, ReversalFeePool* fp)
@@ -22,13 +23,18 @@ uint64_t ReversalExecutor::calculateFee(uint64_t /*amount*/) {
 }
 
 bool ReversalExecutor::debitAccount(const std::string& address, uint64_t amount) {
-    uint64_t current_balance = blockchain->getBalance(address);
-    
+    // `amount` is satoshis; getBalance() is GXC as a double. Comparing them
+    // directly truncated the balance to whole GXC and then weighed it against
+    // a figure a hundred million times larger, so every debit of more than a
+    // few satoshis was refused as insufficient.
+    const uint64_t current_balance = static_cast<uint64_t>(
+        blockchain->getBalance(address) * static_cast<double>(Utils::SATOSHIS_PER_COIN));
+
     if (current_balance < amount) {
         LOG_ERROR("Reversal Executor: Insufficient balance to debit. " +
-                 std::string("Address: ") + address + 
-                 ", Required: " + std::to_string(amount) + 
-                 ", Available: " + std::to_string(current_balance));
+                 std::string("Address: ") + address +
+                 ", Required: " + std::to_string(amount) +
+                 " satoshis, Available: " + std::to_string(current_balance));
         return false;
     }
     
@@ -91,6 +97,22 @@ bool ReversalExecutor::validateFeasibility(const ProofOfFeasibility& proof, std:
     LOG_INFO("=== PROTOCOL: VALIDATING REVERSAL FEASIBILITY ===");
     LOG_INFO("This validation is independent of admin approval");
     
+    // Check 0: This theft must not already have been reversed.
+    //
+    // ProofGenerator refuses to mint a second proof for a stolen transaction
+    // that has been reversed, but that only guards the minting step. A proof
+    // is a value the caller holds, so without this check the same one could be
+    // executed again and again: each replay charges the fee pool afresh and
+    // records another recovery against funds that were already returned.
+    LOG_INFO("Check 0: Checking the theft has not already been reversed...");
+    if (blockchain->isTransactionReversed(proof.stolen_tx)) {
+        errorMessage = "Stolen transaction " + proof.stolen_tx +
+                       " has already been reversed. Replaying a proof is not permitted.";
+        LOG_WARNING("Protocol: Feasibility check FAILED - " + errorMessage);
+        return false;
+    }
+    LOG_INFO("Check 0: Not previously reversed ✓");
+
     // Check 1: Cryptographic proof validity
     LOG_INFO("Check 1: Validating cryptographic proof...");
     if (!proofGenerator->validateProof(proof)) {
@@ -115,7 +137,8 @@ bool ReversalExecutor::validateFeasibility(const ProofOfFeasibility& proof, std:
     // Check 3: Current holder balance
     LOG_INFO("Check 3: Checking current holder balance...");
     double holderBalance = blockchain->getBalance(proof.current_holder);
-    double requiredAmount = proof.recoverable_amount / 100000000.0; // Convert from satoshis
+    double requiredAmount = static_cast<double>(proof.recoverable_amount) /
+                            static_cast<double>(Utils::SATOSHIS_PER_COIN);
     if (holderBalance < requiredAmount) {
         errorMessage = "Current holder has insufficient balance (" + 
                       std::to_string(holderBalance) + " GXC < " + 

@@ -3197,12 +3197,16 @@ bool Blockchain::addReversalTransaction(const std::string& from,
         LOG_BLOCKCHAIN(LogLevel::INFO, "  Fee: " + std::to_string(fee));
         LOG_BLOCKCHAIN(LogLevel::INFO, "  Proof: " + proof_hash);
         
-        // Verify balances
-        uint64_t from_balance = getBalance(from);
+        // Verify balances. `amount` and `fee` are satoshis, as everywhere on
+        // the reversal path; getBalance() is GXC as a double. Comparing the
+        // two directly truncated the balance to whole GXC and then measured it
+        // against a satoshi figure a hundred million times larger.
+        const uint64_t from_balance = static_cast<uint64_t>(
+            getBalance(from) * static_cast<double>(Utils::SATOSHIS_PER_COIN));
         if (from_balance < amount) {
             LOG_BLOCKCHAIN(LogLevel::ERROR, "Insufficient balance for reversal");
-            LOG_BLOCKCHAIN(LogLevel::ERROR, "Required: " + std::to_string(amount) + 
-                          ", Available: " + std::to_string(from_balance));
+            LOG_BLOCKCHAIN(LogLevel::ERROR, "Required: " + std::to_string(amount) +
+                          " satoshis, Available: " + std::to_string(from_balance));
             return false;
         }
         
