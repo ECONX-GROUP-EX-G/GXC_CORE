@@ -471,6 +471,8 @@ if(BUILD_TESTS)
         tests/test_staking.cpp
         tests/test_sending.cpp
         tests/test_signature_scheme.cpp
+        tests/test_fraud.cpp
+        tests/test_reversal.cpp
     )
 
     target_link_libraries(gxc-tests gxc_core)
@@ -491,7 +493,20 @@ if(BUILD_TESTS)
             Mining
             Staking
             Sending
-            SignatureScheme)
+            SignatureScheme
+            Taint
+            TaintTracing
+            FraudRules
+            FraudAlerts
+            FraudConsensus
+            CleanZones
+            AddressFlags
+            FraudPersistence
+            ReversalFeePool
+            ReversalProof
+            ReversalProofValidation
+            ReversalExecution
+            ReversalConfig)
         add_test(NAME ${suite} COMMAND gxc-tests ${suite})
     endforeach()
 
